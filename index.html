@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PDS Management System – CS Form 212 (Revised 2025)</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+
+<!-- ══ LOGIN OVERLAY ══ -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <div class="login-header">
+      <div class="login-logo">📋</div>
+      <div class="login-title">PDS Management System</div>
+      <div class="login-sub">CS Form 212 · Revised 2025</div>
+    </div>
+    <div class="login-body">
+      <div class="login-role-tabs">
+        <button class="lrt active" id="lrtAdmin" onclick="setLoginRole('admin')">👤 Admin / HR</button>
+        <button class="lrt" id="lrtEmp" onclick="setLoginRole('employee')">🧑‍💼 Employee</button>
+      </div>
+      <div id="loginErr" class="login-err"></div>
+      <!-- ADMIN FIELDS -->
+      <div id="adminLoginFields">
+        <div class="login-field"><label>Username</label><input type="text" id="loginUser" placeholder="admin" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"></div>
+        <div class="login-field"><label>Password</label><input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      </div>
+      <!-- EMPLOYEE FIELDS -->
+      <div id="empLoginFields" style="display:none">
+        <div class="login-field"><label>Select Your Name</label>
+          <select class="login-emp-sel" id="loginEmpSel"><option value="">— Choose your name —</option></select>
+        </div>
+        <div class="login-field"><label>Password</label><input type="password" id="loginEmpPass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      </div>
+      <button class="login-btn" onclick="doLogin()">Sign In</button>
+      <div class="login-hint" id="loginHint">
+        <b>Admin:</b> admin / admin123<br>
+        <b>Employees</b> use password: <b>pds2025</b><br>
+        <span style="font-size:10px;color:var(--gray-400)">(Change credentials in Manage Users after login)</span>
+      </div>
+    </div>
+    <div class="login-footer-bar">Republic of the Philippines · Civil Service Commission</div>
+  </div>
+</div>
+
+<div id="topbar">
+  <div class="tb-brand">
+    <div class="tb-icon">📋</div>
+    <div><div class="tb-title">PDS Management System</div><div class="tb-sub">CS FORM 212 · REVISED 2025</div></div>
+  </div>
+  <div class="tb-right" id="tbRight">
+    <div class="user-chip">
+      <div class="user-avatar" id="tbAvatar">👤</div>
+      <div><div class="user-name-chip" id="tbName">—</div><div class="user-role-chip" id="tbRoleLbl">—</div></div>
+    </div>
+    <button class="logout-btn" onclick="doLogout()">Sign Out</button>
+  </div>
+</div>
+
+<div id="shell">
+<div id="sidebar">
+  <div class="nav-sec">Main Menu</div>
+  <div id="adminNav">
+    <div class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">📊 Dashboard</div>
+    <div class="nav-item" data-page="employees" onclick="navigate('employees')">👥 Employees</div>
+    <div class="nav-item" data-page="training" onclick="navigate('training')">🎓 Training &amp; L&amp;D</div>
+    <div class="nav-item" data-page="reports" onclick="navigate('reports')">📈 Monthly Reports</div>
+    <div class="nav-item" data-page="users" onclick="navigate('users')">🔐 Manage Users</div>
+  </div>
+  <div id="empNav" style="display:none">
+    <div class="nav-item active" data-page="myPDS" onclick="navigate('myPDS')">📋 My PDS</div>
+  </div>
+</div>
+
+<div id="main">
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div class="page-title">Dashboard</div>
+    <div class="stat-grid" id="statGrid"></div>
+    <div class="card">
+      <div class="card-hdr">📄 Recent PDS Submissions</div>
+      <table><thead><tr><th>ID</th><th>Name</th><th>Department</th><th>Position</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="dashTable"></tbody></table>
+    </div>
+  </div>
+
+  <!-- EMPLOYEES -->
+  <div class="page" id="page-employees">
+    <div class="page-title">Employee Directory</div>
+    <div class="filter-bar">
+      <input type="text" id="filterQ" placeholder="🔍  Search by name, ID, or position…" oninput="renderEmployees()">
+      <select id="filterDept" onchange="renderEmployees()"><option value="">All Departments</option></select>
+      <select id="filterStatus" onchange="renderEmployees()"><option value="">All Status</option><option value="draft">Draft</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
+      <button class="btn btn-primary" onclick="openNewPDS()">+ New Employee PDS</button>
+    </div>
+    <div class="count-lbl" id="empCount"></div>
+    <div class="card">
+      <table><thead><tr><th>ID</th><th>Name</th><th>Department</th><th>Position</th><th>Date Hired</th><th>Trainings</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="empTable"></tbody></table>
+    </div>
+  </div>
+
+  <!-- PDS VIEW -->
+  <div class="page" id="page-pdsView">
+    <div class="page-title">PDS Details</div>
+    <div class="btn-group" id="pdsViewActions" style="margin-bottom:16px"></div>
+    <div class="pds-view" id="pdsViewContent"></div>
+  </div>
+
+  <!-- PDS FORM -->
+  <div class="page" id="page-pdsForm">
+    <div class="page-title" id="pdsFormTitle">Personal Data Sheet</div>
+    <div class="form-wrap" id="pdsFormWrap"></div>
+  </div>
+
+  <!-- TRAINING -->
+  <div class="page" id="page-training">
+    <div class="page-title">Training &amp; Development</div>
+    <div class="tr-form">
+      <div class="tr-form-title">➕ Add Training / L&amp;D Record</div>
+      <div class="fg g3" style="margin-bottom:12px">
+        <div class="fld s2"><label>Employee *</label><select id="trEmpId"><option value="">— Select Employee —</option></select></div>
+        <div class="fld"><label>Type of L&amp;D *</label><select id="trType"><option>Managerial</option><option>Supervisory</option><option selected>Technical</option><option>Foundational</option><option>Leadership</option><option>Other</option></select></div>
+      </div>
+      <div class="fg g1" style="margin-bottom:12px">
+        <div class="fld"><label>Title of Training / L&amp;D Intervention *</label><input type="text" id="trTitle" placeholder="Write in full"></div>
+      </div>
+      <div class="fg g4" style="margin-bottom:14px">
+        <div class="fld"><label>Date From *</label><input type="date" id="trFrom"></div>
+        <div class="fld"><label>Date To *</label><input type="date" id="trTo"></div>
+        <div class="fld"><label>No. of Hours *</label><input type="number" id="trHours" min="1" placeholder="e.g. 40"></div>
+        <div class="fld"><label>Conducted / Sponsored By</label><input type="text" id="trBy" placeholder="Organization name"></div>
+      </div>
+      <button class="btn btn-primary" onclick="addTraining()">+ Add Training Record</button>
+    </div>
+    <div class="card">
+      <div class="card-hdr">🎓 All Training Records <span id="trCount" style="font-size:12px;color:var(--text-muted)"></span></div>
+      <table><thead><tr><th>Employee</th><th>Title</th><th>From</th><th>To</th><th>Hours</th><th>Type</th><th>Conducted By</th><th>Added</th><th></th></tr></thead>
+      <tbody id="trTable"></tbody></table>
+    </div>
+  </div>
+
+  <!-- REPORTS -->
+  <div class="page" id="page-reports">
+    <div class="page-title">Monthly Reports</div>
+    <div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px">Report Month</div>
+      <input type="month" id="reportMonth" oninput="renderReports()" style="padding:7px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:'IBM Plex Sans',sans-serif"></div>
+      <button class="btn btn-primary" onclick="printReport()">🖨 Print Report</button>
+    </div>
+    <div id="reportContent"></div>
+  </div>
+
+  <!-- MY PDS -->
+  <div class="page" id="page-myPDS">
+    <div class="page-title">My Personal Data Sheet</div>
+    <div id="myPDSContent"></div>
+  </div>
+  <!-- MANAGE USERS -->
+  <div class="page" id="page-users">
+    <div class="page-title">🔐 Manage Users</div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-hdr">➕ Add / Update User Account</div>
+      <div style="padding:16px 18px">
+        <div class="user-form-grid">
+          <div class="fld"><label>Role</label><select id="uRole"><option value="admin">Admin / HR</option><option value="employee">Employee</option></select></div>
+          <div class="fld"><label>Username</label><input type="text" id="uUser" placeholder="e.g. jdelacruz"></div>
+          <div class="fld"><label>Password</label><input type="password" id="uPass" placeholder="New password"></div>
+          <div class="fld" id="uEmpWrap"><label>Link to Employee</label><select id="uEmpLink"><option value="">— None —</option></select></div>
+          <div><button class="btn btn-primary" onclick="saveUser()">Save User</button></div>
+        </div>
+        <div id="uErr" style="color:var(--red);font-size:12px;margin-top:4px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-hdr">👥 All User Accounts</div>
+      <table><thead><tr><th>Username</th><th>Role</th><th>Linked Employee</th><th>Actions</th></tr></thead>
+      <tbody id="usersTable"></tbody></table>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

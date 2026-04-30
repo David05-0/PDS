@@ -1,0 +1,179 @@
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0f2d5e;--accent:#1d56a0;--accent-light:#e8f1fb;
+  --green:#0b6e4f;--green-light:#e6f7f2;
+  --amber:#8a5c00;--amber-light:#fff8e6;
+  --red:#9b1c1c;--red-light:#fef2f2;
+  --violet:#5b21b6;--violet-light:#f5f3ff;
+  --gray-50:#f8f9fb;--gray-100:#f0f2f5;--gray-200:#e4e8ee;
+  --gray-400:#9aa3b0;--gray-600:#5a6474;
+  --white:#fff;--border:#dde2ea;--text:#1e2535;--text-muted:#5a6474;
+}
+body{font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--gray-50);min-height:100vh}
+
+/* TOPBAR */
+#topbar{background:var(--navy);color:#fff;height:54px;display:flex;align-items:center;padding:0 20px;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.tb-brand{display:flex;align-items:center;gap:12px}
+.tb-icon{width:34px;height:34px;background:rgba(255,255,255,.12);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px}
+.tb-title{font-size:14px;font-weight:700}
+.tb-sub{font-size:10px;color:rgba(255,255,255,.6);letter-spacing:.4px}
+.tb-right{display:flex;align-items:center;gap:8px}
+.role-lbl{font-size:11px;color:rgba(255,255,255,.6)}
+.role-btn{padding:5px 13px;border-radius:6px;border:1.5px solid rgba(255,255,255,.3);background:transparent;color:#fff;cursor:pointer;font-size:11px;font-weight:500;font-family:'IBM Plex Sans',sans-serif;transition:background .15s}
+.role-btn.active{background:rgba(255,255,255,.22)}
+#empSel{padding:5px 10px;border-radius:6px;border:1.5px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font-size:11px;font-family:'IBM Plex Sans',sans-serif}
+#empSel option{color:#000}
+
+/* LAYOUT */
+#shell{display:flex;min-height:calc(100vh - 54px)}
+#sidebar{width:210px;background:var(--white);border-right:1px solid var(--border);padding:14px 0;flex-shrink:0;position:sticky;top:54px;height:calc(100vh - 54px);overflow-y:auto}
+.nav-sec{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--gray-400);padding:10px 18px 4px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 18px;font-size:12.5px;color:var(--text-muted);cursor:pointer;border-left:3px solid transparent;transition:all .15s;user-select:none}
+.nav-item:hover{background:var(--gray-50);color:var(--text)}
+.nav-item.active{background:var(--accent-light);color:var(--accent);font-weight:600;border-left-color:var(--accent)}
+#main{flex:1;padding:24px;overflow-y:auto;max-height:calc(100vh - 54px)}
+.page{display:none}.page.active{display:block}
+.page-title{font-size:20px;font-weight:700;color:var(--navy);margin-bottom:20px}
+
+/* CARDS / TABLES */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.stat-card{border-radius:10px;padding:16px 20px}
+.stat-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.stat-val{font-size:34px;font-weight:700;font-family:'IBM Plex Mono',monospace;line-height:1}
+.card{background:var(--white);border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:18px}
+.card-hdr{padding:13px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:space-between}
+table{width:100%;border-collapse:collapse}
+th{padding:8px 14px;background:var(--gray-50);text-align:left;font-size:10.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+td{padding:9px 14px;border-bottom:1px solid var(--gray-100);font-size:12.5px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--gray-50)}
+
+/* BADGES */
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.badge-approved{background:var(--green-light);color:var(--green)}
+.badge-pending{background:var(--amber-light);color:var(--amber)}
+.badge-rejected{background:var(--red-light);color:var(--red)}
+.badge-draft{background:var(--gray-100);color:var(--gray-600)}
+.badge-tech{background:var(--violet-light);color:var(--violet)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 16px;border-radius:8px;border:1px solid transparent;font-size:12px;font-weight:600;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-outline{background:var(--white);color:var(--text);border-color:var(--border)}
+.btn-sm{padding:4px 10px;font-size:11px}
+.btn-green{background:var(--green-light);color:var(--green);border-color:#a7f3d0}
+.btn-red{background:var(--red-light);color:var(--red);border-color:#fca5a5}
+.btn-blue{background:var(--accent-light);color:var(--accent);border-color:#bfdbfe}
+.btn-group{display:flex;gap:6px;flex-wrap:wrap}
+
+/* FILTER BAR */
+.filter-bar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.filter-bar input,.filter-bar select{padding:7px 11px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-family:'IBM Plex Sans',sans-serif;background:var(--white);color:var(--text);outline:none}
+.filter-bar input:focus,.filter-bar select:focus{border-color:var(--accent)}
+.filter-bar input{min-width:220px;flex:1}
+.count-lbl{font-size:11px;color:var(--text-muted);margin-bottom:8px}
+
+/* PDS FORM */
+.form-wrap{background:var(--white);border-radius:10px;border:1px solid var(--border)}
+.tab-bar{display:flex;overflow-x:auto;border-bottom:1px solid var(--border);padding:0 16px;background:var(--gray-50)}
+.tab-item{padding:11px 14px;font-size:11.5px;font-weight:500;color:var(--text-muted);cursor:pointer;border-bottom:2.5px solid transparent;white-space:nowrap;transition:all .15s;user-select:none}
+.tab-item.active{color:var(--accent);font-weight:700;border-bottom-color:var(--accent);background:var(--white)}
+.form-body{padding:20px;max-height:530px;overflow-y:auto}
+.fsec{margin-bottom:22px}
+.fsec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);border-bottom:1.5px solid var(--gray-200);padding-bottom:5px;margin-bottom:14px}
+.fg{display:grid;gap:12px}
+.g1{grid-template-columns:1fr}.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}.g4{grid-template-columns:1fr 1fr 1fr 1fr}
+.s2{grid-column:span 2}.s3{grid-column:span 3}.s4{grid-column:span 4}
+.fld label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px}
+.fld input,.fld select,.fld textarea{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);background:var(--white);outline:none}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,86,160,.08)}
+.fld textarea{resize:vertical;min-height:70px}
+.row-card{background:var(--gray-50);border-radius:8px;padding:12px;margin-bottom:10px;border:1px solid var(--border)}
+.row-card-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.row-idx{font-size:11px;font-weight:700;color:var(--accent);font-family:'IBM Plex Mono',monospace}
+.add-btn{padding:6px 14px;background:var(--green-light);color:var(--green);border:1px solid #a7f3d0;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:'IBM Plex Sans',sans-serif}
+.form-footer{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--border)}
+.decl-item{background:var(--gray-50);border:1px solid var(--border);border-radius:8px;padding:11px 14px;margin-bottom:8px}
+.decl-row{display:flex;align-items:flex-start;gap:10px}
+.decl-radios{display:flex;gap:14px;flex-shrink:0;margin-top:2px}
+.decl-radios label{display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;font-weight:500}
+.decl-text{font-size:12px;line-height:1.55}
+.decl-det{margin-top:8px}
+.decl-det input{width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:'IBM Plex Sans',sans-serif}
+
+/* PDS VIEW */
+.pds-view{background:var(--white);border-radius:10px;border:1px solid var(--border);padding:24px}
+.pds-hero{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px;padding-bottom:18px;border-bottom:2px solid var(--gray-100)}
+.pds-name{font-size:21px;font-weight:700;color:var(--navy)}
+.pds-sub{font-size:12.5px;color:var(--text-muted);margin-top:4px}
+.pds-meta{text-align:right;font-size:11px;color:var(--text-muted)}
+.vsec{margin-bottom:18px}
+.vsec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);border-bottom:1.5px solid var(--gray-200);padding-bottom:4px;margin-bottom:12px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.iitem .lbl{font-size:10px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.4px}
+.iitem .val{font-size:12.5px;color:var(--text);font-weight:500}
+.empty-note{font-size:12.5px;color:var(--gray-400);font-style:italic}
+
+/* TRAINING / REPORTS */
+.tr-form{background:var(--white);border-radius:10px;border:1px solid var(--border);padding:20px;margin-bottom:20px}
+.tr-form-title{font-size:13px;font-weight:600;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.progress-bar{height:8px;background:var(--gray-100);border-radius:4px;overflow:hidden;margin-top:6px}
+.progress-fill{height:100%;border-radius:4px}
+.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.my-banner{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.mono{font-family:'IBM Plex Mono',monospace;font-size:11px}
+
+/* EMPTY STATE */
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-muted)}
+.empty-state .icon{font-size:48px;margin-bottom:14px}
+.empty-state h3{font-size:16px;font-weight:600;color:var(--text);margin-bottom:8px}
+.empty-state p{font-size:13px;margin-bottom:20px}
+
+/* TOAST */
+#toast{position:fixed;top:70px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:500;display:none;box-shadow:0 4px 16px rgba(0,0,0,.1)}
+#toast.success{background:var(--green-light);color:var(--green);border:1px solid #a7f3d0}
+#toast.warning{background:var(--amber-light);color:var(--amber);border:1px solid #fcd34d}
+#toast.error{background:var(--red-light);color:var(--red);border:1px solid #fca5a5}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:4px}
+
+/* ══ LOGIN OVERLAY ══ */
+#loginOverlay{position:fixed;inset:0;z-index:9999;background:var(--navy);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Sans',sans-serif}
+#loginOverlay.hidden{display:none}
+.login-box{background:var(--white);border-radius:16px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.login-header{background:var(--navy);padding:32px 36px 28px;text-align:center}
+.login-logo{width:52px;height:52px;background:rgba(255,255,255,.13);border-radius:14px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:24px}
+.login-title{color:#fff;font-size:18px;font-weight:700;margin-bottom:4px}
+.login-sub{color:rgba(255,255,255,.55);font-size:11px;letter-spacing:.5px;text-transform:uppercase}
+.login-body{padding:32px 36px}
+.login-role-tabs{display:flex;background:var(--gray-100);border-radius:10px;padding:4px;margin-bottom:24px;gap:4px}
+.lrt{flex:1;padding:8px;border-radius:8px;border:none;background:transparent;font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all .18s}
+.lrt.active{background:var(--white);color:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.login-field{margin-bottom:16px}
+.login-field label{display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:6px}
+.login-field input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);outline:none;transition:border-color .15s}
+.login-field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,86,160,.09)}
+.login-emp-sel{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);outline:none;background:var(--white)}
+.login-emp-sel:focus{border-color:var(--accent)}
+.login-btn{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13.5px;font-weight:700;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;margin-top:4px;transition:background .15s}
+.login-btn:hover{background:#174d91}
+.login-err{background:var(--red-light);color:var(--red);border:1px solid #fca5a5;border-radius:8px;padding:9px 13px;font-size:12px;font-weight:500;margin-bottom:14px;display:none}
+.login-hint{text-align:center;margin-top:18px;font-size:11px;color:var(--text-muted);background:var(--gray-50);border-radius:8px;padding:10px 14px;line-height:1.7}
+.login-hint b{color:var(--text)}
+.login-footer-bar{padding:14px 36px;border-top:1px solid var(--border);text-align:center;font-size:10px;color:var(--text-muted)}
+
+/* ══ LOGGED-IN USER CHIP ══ */
+.user-chip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.10);border:1.5px solid rgba(255,255,255,.22);border-radius:8px;padding:5px 12px;cursor:default}
+.user-avatar{width:24px;height:24px;border-radius:6px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:12px}
+.user-name-chip{font-size:11px;font-weight:600;color:#fff;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-role-chip{font-size:9.5px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.4px}
+.logout-btn{padding:5px 11px;border-radius:6px;border:1.5px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.75);cursor:pointer;font-size:11px;font-weight:500;font-family:'IBM Plex Sans',sans-serif;transition:all .15s}
+.logout-btn:hover{background:rgba(255,255,255,.12);color:#fff}
+
+/* ══ MANAGE USERS PANEL ══ */
+#page-users .card{margin-bottom:0}
+.user-form-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:16px}
+.user-form-grid .fld label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px;display:block}
+.user-form-grid .fld input,.user-form-grid .fld select{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);background:var(--white);outline:none}
+.user-form-grid .fld input:focus{border-color:var(--accent)}
+
