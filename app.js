@@ -1045,13 +1045,14 @@ h1 { font-size: 14px; font-weight: bold; text-align: center; letter-spacing: 1px
 .warn { font-size: 6.5px; font-weight: bold; font-style: italic; margin-bottom: 1px; line-height: 1.4; }
 .guide { font-size: 6.5px; margin-bottom: 2px; line-height: 1.5; }
 .shdr { background: #1a1a6e; color: #fff; font-size: 7.5px; font-weight: bold; font-style: italic; padding: 2px 6px; margin-top: 1px; }
-table { width: 100%; border-collapse: collapse; }
-td, th { border: 0.5px solid #777; vertical-align: top; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+td, th { border: 0.5px solid #777; vertical-align: top; overflow: hidden; word-break: break-word; overflow-wrap: anywhere; }
 th { background: #e0e0e0; font-weight: bold; font-size: 6.8px; text-align: center; padding: 2px 3px; vertical-align: middle; }
 .lbl { font-size: 6.3px; color: #333; display: block; line-height: 1.3; margin-bottom: 0px; }
-.val { font-size: 8px; display: block; min-height: 9px; }
-.name-val { font-size: 10px; font-weight: bold; text-transform: uppercase; display: block; min-height: 11px; }
-.nb td, .nb th { border: none !important; }
+.val { font-size: 8px; display: block; min-height: 9px; word-break: break-word; overflow-wrap: anywhere; white-space: normal; }
+.name-val { font-size: 10px; font-weight: bold; text-transform: uppercase; display: block; min-height: 11px; word-break: break-word; overflow-wrap: anywhere; white-space: normal; }
+.nb td, .nb th { border: none !important; overflow: visible; }
+/* auto-fit helper — JS will apply inline font-size to .val/.name-val with long content */
 .sig-bar { display: flex; border-top: 0.5px solid #555; margin-top: 3px; padding-top: 2px; }
 .sig-cell { flex: 1; font-size: 7px; font-weight: bold; padding: 1px 0; }
 .sig-line { border-bottom: 0.5px solid #000; height: 14px; margin: 1px 0; }
@@ -1556,7 +1557,35 @@ Print legibly if accomplished through own handwriting. Tick appropriate boxes (&
 </div>
 
 <\/body><\/html>`);
-  w.document.close(); w.print();
+  w.document.close();
+  // Auto-scale text after document loads, then print
+  w.addEventListener('load', function() {
+    // Scale .val and .name-val spans with long text
+    w.document.querySelectorAll('.val, .name-val').forEach(function(span) {
+      var text = span.textContent.trim();
+      if (!text) return;
+      var isName = span.classList.contains('name-val');
+      var baseSize = isName ? 10 : 8;
+      var threshold = isName ? 20 : 26;
+      if (text.length > threshold) {
+        var scale = Math.max(0.52, threshold / text.length);
+        span.style.fontSize = (baseSize * scale).toFixed(1) + 'px';
+        span.style.lineHeight = '1.2';
+      }
+    });
+    // Scale plain data cells (work exp, training, education rows, etc.)
+    w.document.querySelectorAll('td').forEach(function(cell) {
+      if (cell.querySelector('.val,.name-val,.lbl')) return;
+      var text = cell.textContent.trim();
+      if (text.length > 32) {
+        var base = parseFloat(cell.style.fontSize) || 7.5;
+        var scale = Math.max(0.55, 30 / text.length);
+        cell.style.fontSize = (base * scale).toFixed(1) + 'px';
+        cell.style.lineHeight = '1.15';
+      }
+    });
+    setTimeout(function() { w.print(); }, 120);
+  });
 }
 
 // ══════════ POPULATE SELECTS ══════════
