@@ -933,289 +933,277 @@ function openMyEdit(id) { editingPDS = JSON.parse(JSON.stringify(employees.find(
 
 // ══════════ PRINT PDS — exact CS Form 212 Revised 2025 layout ══════════
 function printPDS(id) {
-  const e = employees.find(x => x.id === id); if (!e) { toast('Employee not found.', 'error'); return; }
-  const tr = empTr(id); const pr = e.personal; const q = e.questions;
-  const refs = (e.references && e.references.length >= 3) ? e.references : [{name:'',address:'',contact:''},{name:'',address:'',contact:''},{name:'',address:'',contact:''}];
-  const v  = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const yn = val => val
-    ? `<span style="font-weight:bold">&#9746; YES</span> &nbsp; &#9744; NO`
-    : `&#9744; YES &nbsp; <span style="font-weight:bold">&#9746; NO</span>`;
-  const cb = (checked) => checked ? '&#9746;' : '&#9744;';
+  const e = employees.find(x => x.id === id);
+  if (!e) { toast('Employee not found.', 'error'); return; }
+  const tr = empTr(id);
+  const pr = e.personal;
+  const q = e.questions;
+  const fam = e.family;
+  const refs = (e.references && e.references.length >= 3)
+    ? e.references
+    : [{name:'',address:'',contact:''},{name:'',address:'',contact:''},{name:'',address:'',contact:''}];
 
-  /* ── EDUCATION ROWS ── */
+  const v  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const yn = val => val
+    ? `<span style="font-weight:bold">&#9746; YES</span>&nbsp;&nbsp; &#9744; NO`
+    : `&#9744; YES &nbsp;&nbsp; <span style="font-weight:bold">&#9746; NO</span>`;
+  const cb = b => b ? '&#9746;' : '&#9744;';
+  const line = (min) => `<span style="display:inline-block;border-bottom:0.5px solid #000;min-width:${min}px">&nbsp;</span>`;
+
+  /* ── Education rows (5 levels) ── */
   const eduLevels = ['Elementary','Secondary','Vocational / Trade Course','College','Graduate Studies'];
   const eduRows = eduLevels.map(level => {
     const f = (e.education||[]).find(x => x.level && x.level.toLowerCase().startsWith(level.split(' ')[0].toLowerCase()));
     return `<tr>
-      <td style="font-size:7px;font-weight:bold;padding:2px 4px;background:#f2f2f2;width:14%">${level}</td>
+      <td style="padding:2px 5px;background:#fafafa;font-size:7px;font-weight:bold">${level}</td>
       <td style="padding:2px 4px;font-size:7.5px">${f?v(f.school):''}</td>
       <td style="padding:2px 4px;font-size:7.5px">${f?v(f.course):''}</td>
-      <td style="text-align:center;padding:2px 3px;font-size:7.5px;width:6%">${f?v(f.from):''}</td>
-      <td style="text-align:center;padding:2px 3px;font-size:7.5px;width:6%">${f?v(f.to):''}</td>
-      <td style="text-align:center;padding:2px 3px;font-size:7.5px;width:11%">${f?v(f.units):''}</td>
-      <td style="text-align:center;padding:2px 3px;font-size:7.5px;width:8%">${f?v(f.yearGrad):''}</td>
-      <td style="padding:2px 4px;font-size:7.5px;width:13%">${f?v(f.honors):''}</td>
+      <td style="text-align:center;padding:2px 2px;font-size:7.5px">${f?v(f.from):''}</td>
+      <td style="text-align:center;padding:2px 2px;font-size:7.5px">${f?v(f.to):''}</td>
+      <td style="text-align:center;padding:2px 3px;font-size:7.5px">${f?v(f.units):''}</td>
+      <td style="text-align:center;padding:2px 3px;font-size:7.5px">${f?v(f.yearGrad):''}</td>
+      <td style="padding:2px 4px;font-size:7.5px">${f?v(f.honors):''}</td>
     </tr>`;
   }).join('');
 
-  /* ── ELIGIBILITY ROWS ── */
+  /* ── Eligibility rows (7 empty) ── */
   let eligRows = (e.eligibility||[]).map(r => `<tr>
-    <td style="padding:2px 4px;font-size:7.5px">${v(r.name)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.rating)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.dateConf)}</td>
-    <td style="padding:2px 4px;font-size:7.5px">${v(r.place)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.licNo)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.licValid)}</td>
+    <td style="padding:4px 5px;font-size:7.5px">${v(r.name)}</td>
+    <td style="text-align:center;padding:4px 3px;font-size:7.5px">${v(r.rating)}</td>
+    <td style="text-align:center;padding:4px 3px;font-size:7.5px">${v(r.dateConf)}</td>
+    <td style="padding:4px 5px;font-size:7.5px">${v(r.place)}</td>
+    <td style="text-align:center;padding:4px 3px;font-size:7.5px">${v(r.licNo)}</td>
+    <td style="text-align:center;padding:4px 3px;font-size:7.5px">${v(r.licValid)}</td>
   </tr>`).join('');
-  for (let i = (e.eligibility||[]).length; i < 5; i++) eligRows += `<tr><td style="padding:5px 4px">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+  for (let i=(e.eligibility||[]).length;i<7;i++) eligRows+=`<tr><td style="padding:7px 4px">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`;
 
-  /* ── WORK EXP ROWS ── */
+  /* ── Work experience rows (28 empty) ── */
   let weRows = (e.workExp||[]).map(r => `<tr>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.from)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.to)}</td>
-    <td style="padding:2px 4px;font-size:7.5px">${v(r.position)}</td>
-    <td style="padding:2px 4px;font-size:7.5px">${v(r.dept)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.salary||'')}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.status)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.govtService)}</td>
+    <td style="text-align:center;padding:3px 2px;font-size:7.5px">${v(r.from)}</td>
+    <td style="text-align:center;padding:3px 2px;font-size:7.5px">${v(r.to)}</td>
+    <td style="padding:3px 5px;font-size:7.5px">${v(r.position)}</td>
+    <td style="padding:3px 5px;font-size:7.5px">${v(r.dept)}</td>
+    <td style="text-align:center;padding:3px 2px;font-size:7.5px">${v(r.salary||'')}</td>
+    <td style="text-align:center;padding:3px 2px;font-size:7.5px">${v(r.status)}</td>
+    <td style="text-align:center;padding:3px 2px;font-size:7.5px">${v(r.govtService)}</td>
   </tr>`).join('');
-  for (let i = (e.workExp||[]).length; i < 8; i++) weRows += `<tr><td style="padding:5px">&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+  for (let i=(e.workExp||[]).length;i<28;i++) weRows+=`<tr><td style="padding:5px 2px">&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
 
-  /* ── VOLUNTARY WORK ROWS ── */
+  /* ── Voluntary work rows (8 empty) ── */
   let volRows = (e.voluntaryWork||[]).map(r => `<tr>
-    <td style="padding:2px 4px;font-size:7.5px">${v(r.org||'')}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.from||'')}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.to||'')}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(r.hours||'')}</td>
-    <td style="padding:2px 4px;font-size:7.5px">${v(r.position||'')}</td>
+    <td style="padding:4px 5px;font-size:7.5px">${v(r.org||'')}</td>
+    <td style="text-align:center;padding:4px 3px;font-size:7.5px">${v(r.from||'')}</td>
+    <td style="text-align:center;padding:4px 3px;font-size:7.5px">${v(r.to||'')}</td>
+    <td style="text-align:center;padding:4px 3px;font-size:7.5px">${v(r.hours||'')}</td>
+    <td style="padding:4px 5px;font-size:7.5px">${v(r.position||'')}</td>
   </tr>`).join('');
-  for (let i = (e.voluntaryWork||[]).length; i < 7; i++) volRows += `<tr><td style="padding:5px">&nbsp;</td><td></td><td></td><td></td><td></td></tr>`;
+  for (let i=(e.voluntaryWork||[]).length;i<8;i++) volRows+=`<tr><td style="padding:7px 4px">&nbsp;</td><td></td><td></td><td></td><td></td></tr>`;
 
-  /* ── TRAINING ROWS ── */
+  /* ── Training rows (25 empty) ── */
   let trRows = tr.map(t => `<tr>
-    <td style="padding:2px 4px;font-size:7.5px">${v(t.title)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(t.from)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(t.to)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(t.hours)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(t.type)}</td>
-    <td style="padding:2px 4px;font-size:7.5px">${v(t.conductedBy)}</td>
+    <td style="padding:3px 5px;font-size:7.5px">${v(t.title)}</td>
+    <td style="text-align:center;padding:3px 3px;font-size:7.5px">${v(t.from)}</td>
+    <td style="text-align:center;padding:3px 3px;font-size:7.5px">${v(t.to)}</td>
+    <td style="text-align:center;padding:3px 3px;font-size:7.5px">${v(t.hours)}</td>
+    <td style="text-align:center;padding:3px 3px;font-size:7.5px">${v(t.type)}</td>
+    <td style="padding:3px 5px;font-size:7.5px">${v(t.conductedBy)}</td>
   </tr>`).join('');
-  for (let i = tr.length; i < 7; i++) trRows += `<tr><td style="padding:5px">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+  for (let i=tr.length;i<25;i++) trRows+=`<tr><td style="padding:5px 4px">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`;
 
-  /* ── CHILDREN ROWS ── */
-  let childRows = (e.family.children||[]).map(c => `<tr>
-    <td style="padding:2px 4px;font-size:7.5px">${v(c.name)}</td>
-    <td style="text-align:center;padding:2px 3px;font-size:7.5px">${v(c.dob)}</td>
+  /* ── Other info rows (5 each) ── */
+  const skillLines = (v(e.otherInfo.skills)).split(',').map(s=>s.trim()).filter(Boolean);
+  const distLines  = (v(e.otherInfo.distinctions)).split(',').map(s=>s.trim()).filter(Boolean);
+  const membLines  = (v(e.otherInfo.memberships)).split(',').map(s=>s.trim()).filter(Boolean);
+  const maxOther = Math.max(5, skillLines.length, distLines.length, membLines.length);
+  let otherRows = '';
+  for (let i=0;i<maxOther;i++) {
+    otherRows += `<tr>
+      <td style="padding:4px 5px;font-size:7.5px;border-right:0.5px solid #555">${skillLines[i]||'&nbsp;'}</td>
+      <td style="padding:4px 5px;font-size:7.5px;border-right:0.5px solid #555">${distLines[i]||'&nbsp;'}</td>
+      <td style="padding:4px 5px;font-size:7.5px">${membLines[i]||'&nbsp;'}</td>
+    </tr>`;
+  }
+
+  /* ── Children rows (12) ── */
+  let childRows = (fam.children||[]).map(c => `<tr>
+    <td style="padding:3px 5px;font-size:7.5px">${v(c.name)}</td>
+    <td style="text-align:center;padding:3px 4px;font-size:7.5px">${v(c.dob)}</td>
   </tr>`).join('');
-  for (let i = (e.family.children||[]).length; i < 12; i++) childRows += `<tr><td style="padding:4px 4px;font-size:7.5px">&nbsp;</td><td></td></tr>`;
+  for (let i=(fam.children||[]).length;i<12;i++) childRows+=`<tr><td style="padding:5px 4px">&nbsp;</td><td></td></tr>`;
 
   const w = window.open('','_blank');
   w.document.write(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<title>CS Form 212 (Revised 2025) — ${pr.surname}, ${pr.firstName}</title>
+<title>CS Form 212 (Revised 2025) — ${v(pr.surname)}, ${v(pr.firstName)}</title>
 <style>
-@page { size: A4 portrait; margin: 6mm 7mm 6mm 7mm; }
+@page { size: A4 portrait; margin: 6mm 7mm 5mm 7mm; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, Helvetica, sans-serif; font-size: 7.5px; color: #000; background: #fff; }
 .page { width: 100%; page-break-after: always; }
 .page:last-child { page-break-after: avoid; }
-h1 { font-size: 13px; font-weight: bold; text-align: center; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 2px; }
-.form-no { font-size: 7px; font-style: italic; margin-bottom: 1px; }
+h1 { font-size: 14px; font-weight: bold; text-align: center; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 2px; font-family: Arial Black, Arial, sans-serif; }
+.form-no { font-size: 7px; font-style: italic; margin-bottom: 0px; line-height: 1.4; }
 .warn { font-size: 6.5px; font-weight: bold; font-style: italic; margin-bottom: 1px; line-height: 1.4; }
-.guide { font-size: 6.5px; font-style: italic; margin-bottom: 3px; line-height: 1.4; }
-.shdr { background: #1a1a6e; color: #fff; font-size: 7.5px; font-weight: bold; font-style: italic; padding: 2px 5px; margin-top: 2px; margin-bottom: 0; letter-spacing: 0.2px; }
+.guide { font-size: 6.5px; margin-bottom: 2px; line-height: 1.5; }
+.shdr { background: #1a1a6e; color: #fff; font-size: 7.5px; font-weight: bold; font-style: italic; padding: 2px 6px; margin-top: 1px; }
 table { width: 100%; border-collapse: collapse; }
-td, th { border: 0.5px solid #555; vertical-align: top; }
-th { background: #e8e8e8; font-weight: bold; font-size: 7px; text-align: center; padding: 2px 3px; }
-.lbl { font-size: 6.5px; color: #222; display: block; line-height: 1.3; margin-bottom: 1px; }
-.val { font-size: 8px; display: block; min-height: 9px; font-weight: normal; }
-.bold-name { font-size: 10px; font-weight: bold; text-transform: uppercase; display: block; min-height: 11px; }
-.nb td { border: none !important; }
-.sig-row { display: flex; gap: 10px; margin-top: 3px; padding-top: 3px; border-top: 0.5px solid #444; }
-.sig-box { flex: 1; font-size: 6.5px; }
-.sig-line { border-bottom: 0.5px solid #000; height: 16px; margin-bottom: 1px; width: 100%; }
-.pfoot { font-size: 7px; text-align: right; margin-top: 3px; border-top: 0.5px solid #444; padding-top: 2px; font-style: italic; }
-.yn-cell { text-align: center; vertical-align: middle; font-size: 8px; width: 28%; }
-.det-row td { border-left: none; border-right: none; border-top: none; font-size: 6.8px; padding: 1px 4px 2px 14px; }
-<\/style>
+td, th { border: 0.5px solid #777; vertical-align: top; }
+th { background: #e0e0e0; font-weight: bold; font-size: 6.8px; text-align: center; padding: 2px 3px; vertical-align: middle; }
+.lbl { font-size: 6.3px; color: #333; display: block; line-height: 1.3; margin-bottom: 0px; }
+.val { font-size: 8px; display: block; min-height: 9px; }
+.name-val { font-size: 10px; font-weight: bold; text-transform: uppercase; display: block; min-height: 11px; }
+.nb td, .nb th { border: none !important; }
+.sig-bar { display: flex; border-top: 0.5px solid #555; margin-top: 3px; padding-top: 2px; }
+.sig-cell { flex: 1; font-size: 7px; font-weight: bold; padding: 1px 0; }
+.sig-line { border-bottom: 0.5px solid #000; height: 14px; margin: 1px 0; }
+.sig-note { font-size: 6px; font-style: italic; }
+.pfoot { font-size: 7px; text-align: right; padding-top: 2px; font-style: italic; margin-top: 2px; }
+.italic-note { font-size: 6.3px; font-style: italic; color: #c00; text-align: center; padding: 1px; }
+.yn-td { width: 30%; text-align: center; vertical-align: middle; padding: 3px 6px; font-size: 8px; }
+</style>
 <\/head><body>
 
-<!-- ═══════════════════════════ PAGE 1 ═══════════════════════════ -->
+<!-- ══════════════════ PAGE 1 ══════════════════ -->
 <div class="page">
-<div class="form-no">CS Form No. 212<br>Revised 2025</div>
+<div class="form-no"><i>CS Form No. 212</i><br><i>Revised 2025</i></div>
 <h1>Personal Data Sheet</h1>
 <div class="warn">WARNING: Any misrepresentation made in the Personal Data Sheet and the Work Experience Sheet shall cause the filing of administrative/criminal case/s against the person concerned.</div>
-<div class="guide">READ THE ATTACHED GUIDE TO FILLING OUT THE PERSONAL DATA SHEET (PDS) BEFORE ACCOMPLISHING THE PDS FORM.<br>Print legibly if accomplished through own handwriting. Tick appropriate boxes (&#10003;) and use separate sheet if necessary. Indicate N/A if not applicable. <strong>DO NOT ABBREVIATE.</strong></div>
+<div class="guide"><i>READ THE ATTACHED GUIDE TO FILLING OUT THE PERSONAL DATA SHEET (PDS) BEFORE ACCOMPLISHING THE PDS FORM.</i><br>
+Print legibly if accomplished through own handwriting. Tick appropriate boxes (&#9003;) and use separate sheet if necessary. Indicate N/A if not applicable. <b>DO NOT ABBREVIATE.</b></div>
 
 <div class="shdr">I. PERSONAL INFORMATION</div>
+
+<!-- Main personal info table -->
 <table>
-  <!-- Row: Surname | (rowspan citizenship) -->
+  <!-- 1. SURNAME -->
   <tr>
-    <td style="padding:2px 4px;width:38%">
-      <span class="lbl">1. SURNAME</span>
-      <span class="bold-name">${v(pr.surname)}</span>
-    </td>
-    <td rowspan="3" style="padding:2px 5px;width:22%;vertical-align:top;border-left:0.5px solid #555">
-      <span class="lbl">16. CITIZENSHIP</span>
-      <div style="margin-top:2px;font-size:7.5px">
-        ${cb(pr.citizenship==='Filipino')} Filipino &nbsp;&nbsp; ${cb(pr.dualCitizenship)} Dual Citizenship
-      </div>
-      <div style="font-size:6.5px;margin-top:2px">
-        ${cb(pr.dualCitizenship && pr.citizenship==='by birth')} by birth &nbsp; ${cb(pr.dualCitizenship && pr.citizenship==='by naturalization')} by naturalization
-      </div>
-      <div style="font-size:6.5px;margin-top:2px">If holder of dual citizenship, Pls. indicate country:</div>
-      <div style="font-size:7.5px;border-bottom:0.5px solid #000;min-height:9px;margin-top:1px">${v(pr.dualCountry)}</div>
+    <td style="width:5%;padding:1px 4px;vertical-align:middle"><span class="lbl">1.</span></td>
+    <td style="width:33%;padding:1px 4px"><span class="lbl">SURNAME</span><span class="name-val">${v(pr.surname)}</span></td>
+    <!-- Citizenship spans rows 1-3 on right -->
+    <td rowspan="3" style="width:42%;padding:2px 5px;vertical-align:top;border-left:0.5px solid #777">
+      <span class="lbl">16. CITIZENSHIP</span><br>
+      <span style="font-size:8px">&nbsp;&nbsp;${cb(pr.citizenship==='Filipino'||!pr.dualCitizenship)} Filipino &nbsp;&nbsp;&nbsp; ${cb(pr.dualCitizenship)} Dual Citizenship</span><br>
+      <span style="font-size:7.5px">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${cb(pr.dualCitizenship)} by birth &nbsp; ${cb(false)} by naturalization</span><br>
+      <span style="font-size:6.5px">&nbsp;&nbsp;If holder of dual citizenship, Pls. indicate country:</span><br>
+      <span style="font-size:7.5px">&nbsp;&nbsp;${v(pr.dualCountry)} &#9660;</span>
     </td>
   </tr>
-  <!-- Row: First Name + Name Extension -->
+  <!-- 2. FIRST NAME + NAME EXT -->
   <tr>
-    <td style="padding:0;border-top:0.5px solid #555">
-      <table class="nb" style="width:100%">
-        <tr>
-          <td style="padding:2px 4px;width:75%">
-            <span class="lbl">2. FIRST NAME</span>
-            <span class="bold-name">${v(pr.firstName)}</span>
-          </td>
-          <td style="padding:2px 4px;border-left:0.5px solid #555">
-            <span class="lbl">NAME EXTENSION (JR., SR)</span>
-            <span class="val">${v(pr.nameExt)}</span>
-          </td>
-        </tr>
-      </table>
+    <td style="padding:1px 4px;vertical-align:middle"><span class="lbl">2.</span></td>
+    <td style="padding:0">
+      <table class="nb" style="width:100%"><tr>
+        <td style="padding:1px 4px;width:72%"><span class="lbl">FIRST NAME</span><span class="name-val">${v(pr.firstName)}</span></td>
+        <td style="padding:1px 4px;border-left:0.5px solid #777"><span class="lbl">NAME EXTENSION (JR., SR)</span><span class="val">${v(pr.nameExt)}</span></td>
+      </tr></table>
     </td>
   </tr>
-  <!-- Row: Middle Name -->
+  <!-- MIDDLE NAME -->
   <tr>
-    <td style="padding:2px 4px;border-top:0.5px solid #555">
-      <span class="lbl">MIDDLE NAME</span>
-      <span class="bold-name">${v(pr.middleName)}</span>
-    </td>
+    <td style="padding:1px 4px"></td>
+    <td style="padding:1px 4px"><span class="lbl">MIDDLE NAME</span><span class="name-val">${v(pr.middleName)}</span></td>
   </tr>
+
   <!-- Row: DOB | Residential Address | Civil Status -->
   <tr>
-    <td style="padding:0;vertical-align:top">
+    <td colspan="2" style="padding:0;vertical-align:top">
       <table class="nb" style="width:100%">
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">3. DATE OF BIRTH (dd/mm/yyyy)</span>
-            <span class="val">${v(pr.dob)}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">4. PLACE OF BIRTH</span>
-            <span class="val">${v(pr.pob)}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">5. SEX AT BIRTH</span>
-            <span class="val">${cb(pr.sex==='Male')} Male &nbsp;&nbsp; ${cb(pr.sex==='Female')} Female</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">6 CIVIL STATUS</span>
-            <span class="val">
-              ${cb(pr.civil==='Single')} Single &nbsp; ${cb(pr.civil==='Married')} Married<br>
-              ${cb(pr.civil==='Widowed')} Widowed &nbsp; ${cb(pr.civil==='Separated')} Separated<br>
-              ${cb(pr.civil==='Other/s:')} Other/s: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:50px">&nbsp;</span>
-            </span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">7. HEIGHT (m)</span><span class="val">${v(pr.height)}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">8. WEIGHT (kg)</span><span class="val">${v(pr.weight)}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">9. BLOOD TYPE</span><span class="val">${v(pr.blood)}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">10. UMID ID NO.</span><span class="val">${v(pr.umid)}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">11. PAG-IBIG ID NO.</span><span class="val">${v(pr.pagibig)}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">12. PHILHEALTH NO.</span><span class="val">${v(pr.philhealth)}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px;border-bottom:0.5px solid #555">
-            <span class="lbl">13. PhilSys Number (PSN):</span><span class="val">${v(pr.philsys)}</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:2px 4px">
-            <span class="lbl">14. TIN NO.</span><span class="val">${v(pr.tin)}</span>
-          </td>
-        </tr>
-      </table>
-    </td>
-    <td style="padding:0;vertical-align:top;width:40%">
-      <table class="nb" style="width:100%">
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555" colspan="2">
-          <span class="lbl">17. RESIDENTIAL ADDRESS</span>
-          <table class="nb" style="width:100%;margin-top:1px">
-            <tr>
-              <td style="width:45%;padding:0 2px 1px 0"><span class="lbl">House/Block/Lot No.</span><span class="val">${v(pr.residHouseNo)}</span></td>
-              <td style="padding:0 0 1px 2px;border-left:0.5px solid #ccc"><span class="lbl">Street</span><span class="val">${v(pr.residStreet)}</span></td>
-            </tr>
-            <tr>
-              <td style="padding:0 2px 1px 0"><span class="lbl">Subdivision/Village</span><span class="val">${v(pr.residSubdiv)}</span></td>
-              <td style="padding:0 0 1px 2px;border-left:0.5px solid #ccc"><span class="lbl">Barangay</span><span class="val">${v(pr.residBrgy)}</span></td>
-            </tr>
-            <tr>
-              <td style="padding:0 2px 1px 0"><span class="lbl">City/Municipality</span><span class="val">${v(pr.residCity)}</span></td>
-              <td style="padding:0 0 1px 2px;border-left:0.5px solid #ccc"><span class="lbl">Province</span><span class="val">${v(pr.residProv)}</span></td>
-            </tr>
-            <tr>
-              <td colspan="2" style="padding:0"><span class="lbl">ZIP CODE</span><span class="val">${v(pr.residZip)}</span></td>
-            </tr>
-          </table>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777;width:38%">
+          <span class="lbl">3. DATE OF BIRTH (dd/mm/yyyy)</span><span class="val">${v(pr.dob)}</span>
         </td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555" colspan="2">
-          <span class="lbl">18. PERMANENT ADDRESS</span>
-          <table class="nb" style="width:100%;margin-top:1px">
-            <tr>
-              <td style="width:45%;padding:0 2px 1px 0"><span class="lbl">House/Block/Lot No.</span><span class="val">${v(pr.permHouseNo)}</span></td>
-              <td style="padding:0 0 1px 2px;border-left:0.5px solid #ccc"><span class="lbl">Street</span><span class="val">${v(pr.permStreet)}</span></td>
-            </tr>
-            <tr>
-              <td style="padding:0 2px 1px 0"><span class="lbl">Subdivision/Village</span><span class="val">${v(pr.permSubdiv)}</span></td>
-              <td style="padding:0 0 1px 2px;border-left:0.5px solid #ccc"><span class="lbl">Barangay</span><span class="val">${v(pr.permBrgy)}</span></td>
-            </tr>
-            <tr>
-              <td style="padding:0 2px 1px 0"><span class="lbl">City/Municipality</span><span class="val">${v(pr.permCity)}</span></td>
-              <td style="padding:0 0 1px 2px;border-left:0.5px solid #ccc"><span class="lbl">Province</span><span class="val">${v(pr.permProv)}</span></td>
-            </tr>
-            <tr>
-              <td colspan="2" style="padding:0"><span class="lbl">ZIP CODE</span><span class="val">${v(pr.permZip)}</span></td>
-            </tr>
-          </table>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">4. PLACE OF BIRTH</span><span class="val">${v(pr.pob)}</span>
         </td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555" colspan="2">
-          <span class="lbl">19. TELEPHONE NO.</span><span class="val">${v(pr.telNo)}</span>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">5. SEX AT BIRTH</span>
+          <span class="val">${cb(pr.sex==='Male')} Male &nbsp;&nbsp; ${cb(pr.sex==='Female')} Female</span>
         </td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555" colspan="2">
-          <span class="lbl">20. MOBILE NO.</span><span class="val">${v(pr.mobileNo)}</span>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">6 CIVIL STATUS</span>
+          <span class="val">
+            ${cb(pr.civil==='Single')} Single &nbsp;&nbsp; ${cb(pr.civil==='Married')} Married<br>
+            ${cb(pr.civil==='Widowed')} Widowed &nbsp;&nbsp; ${cb(pr.civil==='Separated')} Separated<br>
+            ${cb(['Single','Married','Widowed','Separated'].indexOf(pr.civil)<0)} Other/s:
+          </span>
         </td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555" colspan="2">
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">7. HEIGHT (m)</span><span class="val">${v(pr.height)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">8. WEIGHT (kg)</span><span class="val">${v(pr.weight)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">9. BLOOD TYPE</span><span class="val">${v(pr.blood)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">10. UMID ID NO.</span><span class="val">${v(pr.umid)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">11. PAG-IBIG ID NO.</span><span class="val">${v(pr.pagibig)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">12. PHILHEALTH NO.</span><span class="val">${v(pr.philhealth)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">13. PhilSys Number (PSN):</span><span class="val">${v(pr.philsys)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 4px;border-bottom:0.5px solid #777">
+          <span class="lbl">14. TIN NO.</span><span class="val">${v(pr.tin)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 4px">
           <span class="lbl">15. AGENCY EMPLOYEE NO.</span><span class="val">${v(pr.agencyNo)}</span>
         </td></tr>
-        <tr><td style="padding:2px 4px" colspan="2">
+      </table>
+    </td>
+    <!-- Address + Contact right column -->
+    <td style="padding:0;vertical-align:top">
+      <table class="nb" style="width:100%">
+        <tr><td style="padding:2px 5px;border-bottom:0.5px solid #777">
+          <span class="lbl">17. RESIDENTIAL ADDRESS</span>
+          <table class="nb" style="width:100%;margin-top:2px">
+            <tr>
+              <td style="width:40%;padding:0 2px 2px 0"><span class="lbl">House/Block/Lot No.</span><span class="val">${v(pr.residHouseNo)}</span></td>
+              <td style="padding:0 0 2px 2px"><span class="lbl">Street</span><span class="val">${v(pr.residStreet)}</span></td>
+            </tr>
+            <tr>
+              <td style="padding:0 2px 2px 0"><span class="lbl">Subdivision/Village</span><span class="val">${v(pr.residSubdiv)}</span></td>
+              <td style="padding:0 0 2px 2px"><span class="lbl">Barangay</span><span class="val">${v(pr.residBrgy)}</span></td>
+            </tr>
+            <tr>
+              <td style="padding:0 2px 2px 0"><span class="lbl">City/Municipality</span><span class="val">${v(pr.residCity)}</span></td>
+              <td style="padding:0 0 2px 2px"><span class="lbl">Province</span><span class="val">${v(pr.residProv)}</span></td>
+            </tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777">
+          <span class="lbl">ZIP CODE</span><span class="val">${v(pr.residZip)}</span>
+        </td></tr>
+        <tr><td style="padding:2px 5px;border-bottom:0.5px solid #777">
+          <span class="lbl">18. PERMANENT ADDRESS</span>
+          <table class="nb" style="width:100%;margin-top:2px">
+            <tr>
+              <td style="width:40%;padding:0 2px 2px 0"><span class="lbl">House/Block/Lot No.</span><span class="val">${v(pr.permHouseNo)}</span></td>
+              <td style="padding:0 0 2px 2px"><span class="lbl">Street</span><span class="val">${v(pr.permStreet)}</span></td>
+            </tr>
+            <tr>
+              <td style="padding:0 2px 2px 0"><span class="lbl">Subdivision/Village</span><span class="val">${v(pr.permSubdiv)}</span></td>
+              <td style="padding:0 0 2px 2px"><span class="lbl">Barangay</span><span class="val">${v(pr.permBrgy)}</span></td>
+            </tr>
+            <tr>
+              <td style="padding:0 2px 2px 0"><span class="lbl">City/Municipality</span><span class="val">${v(pr.permCity)}</span></td>
+              <td style="padding:0 0 2px 2px"><span class="lbl">Province</span><span class="val">${v(pr.permProv)}</span></td>
+            </tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777">
+          <span class="lbl">ZIP CODE</span><span class="val">${v(pr.permZip)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777">
+          <span class="lbl">19. TELEPHONE NO.</span><span class="val">${v(pr.telNo)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777">
+          <span class="lbl">20. MOBILE NO.</span><span class="val">${v(pr.mobileNo)}</span>
+        </td></tr>
+        <tr><td style="padding:1px 5px">
           <span class="lbl">21. E-MAIL ADDRESS (if any)</span><span class="val">${v(pr.email)}</span>
         </td></tr>
       </table>
@@ -1226,46 +1214,44 @@ th { background: #e8e8e8; font-weight: bold; font-size: 7px; text-align: center;
 <div class="shdr">II. FAMILY BACKGROUND</div>
 <table>
   <tr>
+    <!-- Left: Spouse + Father + Mother -->
     <td style="width:42%;padding:0;vertical-align:top">
       <table class="nb" style="width:100%">
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">22. SPOUSE'S SURNAME</span><span class="val">${v(e.family.spouseSurname)}</span></td></tr>
-        <tr><td style="padding:0;border-bottom:0.5px solid #555">
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">22. SPOUSE'S SURNAME</span><span class="val">${v(fam.spouseSurname)}</span></td></tr>
+        <tr><td style="padding:0;border-bottom:0.5px solid #777">
           <table class="nb" style="width:100%"><tr>
-            <td style="padding:2px 4px;width:72%"><span class="lbl">FIRST NAME</span><span class="val">${v(e.family.spouseFirstName)}</span></td>
-            <td style="padding:2px 4px;border-left:0.5px solid #555"><span class="lbl">NAME EXTENSION (JR., SR)</span><span class="val">${v(e.family.spouseExt)}</span></td>
+            <td style="padding:1px 5px;width:70%"><span class="lbl">FIRST NAME</span><span class="val">${v(fam.spouseFirstName)}</span></td>
+            <td style="padding:1px 5px;border-left:0.5px solid #777"><span class="lbl">NAME EXTENSION (JR., SR)</span><span class="val">${v(fam.spouseExt)}</span></td>
           </tr></table>
         </td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">MIDDLE NAME</span><span class="val">${v(e.family.spouseMiddleName)}</span></td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">OCCUPATION</span><span class="val">${v(e.family.spouseOccupation)}</span></td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">EMPLOYER/BUSINESS NAME</span><span class="val">${v(e.family.spouseEmployer)}</span></td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">BUSINESS ADDRESS</span><span class="val">${v(e.family.spouseBusiness)}</span></td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">TELEPHONE NO.</span><span class="val">${v(e.family.spouseTel)}</span></td></tr>
-        <tr><td style="padding:0;border-bottom:0.5px solid #555">
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">MIDDLE NAME</span><span class="val">${v(fam.spouseMiddleName)}</span></td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">OCCUPATION</span><span class="val">${v(fam.spouseOccupation)}</span></td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">EMPLOYER/BUSINESS NAME</span><span class="val">${v(fam.spouseEmployer)}</span></td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">BUSINESS ADDRESS</span><span class="val">${v(fam.spouseBusiness)}</span></td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">TELEPHONE NO.</span><span class="val">${v(fam.spouseTel)}</span></td></tr>
+        <tr><td style="padding:0;border-bottom:0.5px solid #777">
           <table class="nb" style="width:100%"><tr>
-            <td style="padding:2px 4px;width:72%">
-              <span class="lbl">24.  FATHER'S SURNAME</span><span class="val">${v(e.family.fatherSurname)}</span>
-            </td>
-            <td style="padding:2px 4px;border-left:0.5px solid #555">
-              <span class="lbl">NAME EXTENSION (JR., SR)</span><span class="val">${v(e.family.fatherExt)}</span>
-            </td>
+            <td style="padding:1px 5px;width:70%"><span class="lbl">24. &nbsp; FATHER'S SURNAME</span><span class="val">${v(fam.fatherSurname)}</span></td>
+            <td style="padding:1px 5px;border-left:0.5px solid #777"><span class="lbl">NAME EXTENSION (JR., SR)</span><span class="val">${v(fam.fatherExt)}</span></td>
           </tr></table>
         </td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">FIRST NAME</span><span class="val">${v(e.family.fatherFirstName)}</span></td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">MIDDLE NAME</span><span class="val">${v(e.family.fatherMiddleName)}</span></td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">25. MOTHER'S MAIDEN NAME</span></td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">SURNAME</span><span class="val">${v(e.family.motherSurname)}</span></td></tr>
-        <tr><td style="padding:2px 4px;border-bottom:0.5px solid #555"><span class="lbl">FIRST NAME</span><span class="val">${v(e.family.motherFirstName)}</span></td></tr>
-        <tr><td style="padding:2px 4px"><span class="lbl">MIDDLE NAME</span><span class="val">${v(e.family.motherMiddleName)}</span></td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">FIRST NAME</span><span class="val">${v(fam.fatherFirstName)}</span></td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">MIDDLE NAME</span><span class="val">${v(fam.fatherMiddleName)}</span></td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">25. &nbsp; MOTHER'S MAIDEN NAME</span></td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">SURNAME</span><span class="val">${v(fam.motherSurname)}</span></td></tr>
+        <tr><td style="padding:1px 5px;border-bottom:0.5px solid #777"><span class="lbl">FIRST NAME</span><span class="val">${v(fam.motherFirstName)}</span></td></tr>
+        <tr><td style="padding:1px 5px"><span class="lbl">MIDDLE NAME</span><span class="val">${v(fam.motherMiddleName)}</span></td></tr>
       </table>
     </td>
+    <!-- Right: Children -->
     <td style="padding:0;vertical-align:top">
       <table style="width:100%;border-collapse:collapse;height:100%">
         <tr>
-          <th style="width:70%;padding:2px 4px;text-align:left">23. NAME of CHILDREN (Write full name and list all)</th>
-          <th style="padding:2px 3px">DATE OF BIRTH (dd/mm/yyyy)</th>
+          <th style="width:62%;text-align:left;padding:2px 5px">23. NAME of CHILDREN (Write full name and list all)</th>
+          <th style="padding:2px 4px">DATE OF BIRTH (dd/mm/yyyy)</th>
         </tr>
         ${childRows}
-        <tr><td colspan="2" style="padding:2px 4px;font-size:6.5px;font-style:italic;border-top:0.5px solid #555">(Continue on separate sheet if necessary)</td></tr>
+        <tr><td colspan="2" class="italic-note">(Continue on separate sheet if necessary)</td></tr>
       </table>
     </td>
   </tr>
@@ -1274,324 +1260,297 @@ th { background: #e8e8e8; font-weight: bold; font-size: 7px; text-align: center;
 <div class="shdr">III. EDUCATIONAL BACKGROUND</div>
 <table>
   <tr>
-    <th rowspan="2" style="width:14%;text-align:left;padding:2px 4px">26. LEVEL</th>
-    <th rowspan="2" style="width:25%">NAME OF SCHOOL<br>(Write in full)</th>
-    <th rowspan="2" style="width:20%">BASIC EDUCATION/DEGREE/COURSE<br>(Write in full)</th>
-    <th colspan="2" style="width:12%">PERIOD OF ATTENDANCE</th>
-    <th rowspan="2" style="width:11%">HIGHEST LEVEL/<br>UNITS EARNED<br>(if not graduated)</th>
+    <th rowspan="2" style="width:13%;text-align:left;padding:2px 4px">26. &nbsp;&nbsp;&nbsp;&nbsp; LEVEL</th>
+    <th rowspan="2" style="width:24%">NAME OF SCHOOL<br><span style="font-weight:normal;font-style:italic">(Write in full)</span></th>
+    <th rowspan="2" style="width:21%">BASIC EDUCATION/DEGREE/COURSE<br><span style="font-weight:normal;font-style:italic">(Write in full)</span></th>
+    <th colspan="2" style="width:11%">PERIOD OF ATTENDANCE</th>
+    <th rowspan="2" style="width:12%">HIGHEST LEVEL/<br>UNITS EARNED<br><span style="font-weight:normal;font-style:italic">(if not graduated)</span></th>
     <th rowspan="2" style="width:8%">YEAR<br>GRADUATED</th>
-    <th rowspan="2" style="width:14%">SCHOLARSHIP/<br>ACADEMIC<br>HONORS RECEIVED</th>
+    <th rowspan="2" style="width:13%">SCHOLARSHIP/<br>ACADEMIC<br>HONORS RECEIVED</th>
   </tr>
-  <tr><th style="width:6%">From</th><th style="width:6%">To</th></tr>
+  <tr><th>From</th><th>To</th></tr>
   ${eduRows}
 </table>
-<div style="font-size:6.3px;font-style:italic;margin-top:1px">(Continue on separate sheet if necessary)</div>
+<div class="italic-note">(Continue on separate sheet if necessary)</div>
 
-<div class="sig-row">
-  <div class="sig-box">
-    <div style="font-weight:bold;font-size:7px;margin-bottom:2px">SIGNATURE</div>
-    <div class="sig-line"></div>
-    <div style="font-size:6.3px">(wet signature/e-signature/digital certificate)</div>
-  </div>
-  <div class="sig-box" style="max-width:160px">
-    <div style="font-weight:bold;font-size:7px;margin-bottom:2px">DATE</div>
-    <div class="sig-line"></div>
-  </div>
-</div>
+<!-- Page 1 signature bar -->
+<table style="margin-top:2px">
+  <tr>
+    <td style="width:50%;padding:2px 5px;font-weight:bold;font-size:8px;text-align:center">SIGNATURE</td>
+    <td style="padding:2px 10px;font-size:7px;font-style:italic;text-align:center">(wet signature/e-signature/digital certificate)</td>
+    <td style="width:18%;padding:2px 5px;font-weight:bold;font-size:8px;text-align:center">DATE</td>
+    <td style="width:12%"></td>
+  </tr>
+</table>
 <div class="pfoot">CS FORM 212 (Revised 2025), Page 1 of 4</div>
 </div>
 
-<!-- ═══════════════════════════ PAGE 2 ═══════════════════════════ -->
+<!-- ══════════════════ PAGE 2 ══════════════════ -->
 <div class="page">
 <div class="shdr">IV. CIVIL SERVICE ELIGIBILITY</div>
 <table>
   <tr>
-    <th rowspan="2" style="width:36%;text-align:left;padding:2px 4px">27. CES/CSEE/CAREER SERVICE/RA 1080 (BOARD/BAR)/UNDER SPECIAL LAWS/CATEGORY II/IV ELIGIBILITY AND ELIGIBILITIES FOR UNIFORMED PERSONNEL</th>
+    <th rowspan="2" style="width:37%;text-align:left;padding:3px 5px">27. &nbsp; CES/CSEE/CAREER SERVICE/RA 1080 (BOARD/<br>BAR)/UNDER SPECIAL LAWS/CATEGORY II/ IV ELIGIBILITY<br>and ELIGIBILITIES FOR UNIFORMED PERSONNEL</th>
     <th rowspan="2" style="width:10%">RATING<br>(If Applicable)</th>
-    <th rowspan="2" style="width:14%">DATE OF<br>EXAMINATION /<br>CONFERMENT</th>
+    <th rowspan="2" style="width:13%">DATE OF<br>EXAMINATION /<br>CONFERMENT</th>
     <th rowspan="2" style="width:18%">PLACE OF EXAMINATION /<br>CONFERMENT</th>
     <th colspan="2" style="width:22%">LICENSE (if applicable)</th>
   </tr>
-  <tr><th style="width:12%">NUMBER</th><th style="width:10%">Valid Until</th></tr>
+  <tr><th style="width:12%">NUMBER</th><th>Valid Until</th></tr>
   ${eligRows}
 </table>
-<div style="font-size:6.3px;font-style:italic;margin-top:1px">(Continue on separate sheet if necessary)</div>
+<div class="italic-note">(Continue on separate sheet if necessary)</div>
 
-<div class="shdr" style="margin-top:4px">V. WORK EXPERIENCE</div>
-<div style="font-size:6.3px;font-style:italic;margin-bottom:1px">(Include private employment. Start from your recent work.) Description of duties should be indicated in the attached Work Experience Sheet.</div>
+<div class="shdr" style="margin-top:3px">V. WORK EXPERIENCE</div>
+<div style="font-size:6.5px;font-style:italic;margin-bottom:1px;padding:1px 2px">(Include private employment. Start from your recent work.) Description of duties should be indicated in the attached Work Experience Sheet.</div>
 <table>
   <tr>
-    <th colspan="2" style="width:19%">28. INCLUSIVE DATES<br>(dd/mm/yyy)</th>
-    <th style="width:24%">POSITION TITLE<br>(Write in full/Do not abbreviate)</th>
-    <th style="width:28%">DEPARTMENT / AGENCY / OFFICE / COMPANY<br>(Write in full/Do not abbreviate)</th>
-    <th style="width:10%">MONTHLY<br>SALARY</th>
-    <th style="width:12%">STATUS OF<br>APPOINTMENT</th>
-    <th style="width:7%">GOV'T<br>SERVICE<br>(Y/N)</th>
+    <th colspan="2" style="width:17%">28. &nbsp;&nbsp; INCLUSIVE DATES<br>(dd/mm/yyy)</th>
+    <th style="width:24%">POSITION TITLE<br><span style="font-weight:normal;font-style:italic">(Write in full/Do not abbreviate)</span></th>
+    <th style="width:30%">DEPARTMENT / AGENCY / OFFICE / COMPANY<br><span style="font-weight:normal;font-style:italic">(Write in full/Do not abbreviate)</span></th>
+    <th style="width:9%">STATUS OF<br>APPOINTMENT</th>
+    <th style="width:8%">GOV'T<br>SERVICE<br>(Y/ N)</th>
   </tr>
-  <tr><th style="width:9%">From</th><th style="width:10%">To</th><th></th><th></th><th></th><th></th><th></th></tr>
+  <tr><th style="width:8%">From</th><th style="width:9%">To</th><th></th><th></th><th></th><th></th></tr>
   ${weRows}
 </table>
-<div style="font-size:6.3px;font-style:italic;margin-top:1px">(Continue on separate sheet if necessary)</div>
+<div class="italic-note">(Continue on separate sheet if necessary)</div>
 
-<div class="sig-row">
-  <div class="sig-box">
-    <div style="font-weight:bold;font-size:7px;margin-bottom:2px">SIGNATURE</div>
-    <div class="sig-line"></div>
-    <div style="font-size:6.3px">(wet signature/e-signature/digital certificate)</div>
-  </div>
-  <div class="sig-box" style="max-width:160px">
-    <div style="font-weight:bold;font-size:7px;margin-bottom:2px">DATE</div>
-    <div class="sig-line"></div>
-  </div>
-</div>
+<!-- Page 2 signature bar -->
+<table style="margin-top:2px">
+  <tr>
+    <td style="width:50%;padding:2px 5px;font-weight:bold;font-size:8px;text-align:center">SIGNATURE</td>
+    <td style="padding:2px 10px;font-size:7px;font-style:italic;text-align:center">(wet signature/e-signature/digital certificate)</td>
+    <td style="width:18%;padding:2px 5px;font-weight:bold;font-size:8px;text-align:center">DATE</td>
+    <td style="width:12%"></td>
+  </tr>
+</table>
 <div class="pfoot">CS FORM 212 (Revised 2025), Page 2 of 4</div>
 </div>
 
-<!-- ═══════════════════════════ PAGE 3 ═══════════════════════════ -->
+<!-- ══════════════════ PAGE 3 ══════════════════ -->
 <div class="page">
 <div class="shdr">VI. VOLUNTARY WORK OR INVOLVEMENT IN CIVIC / NON-GOVERNMENT / PEOPLE / VOLUNTARY ORGANIZATION/S</div>
 <table>
   <tr>
-    <th rowspan="2" style="width:42%;text-align:left;padding:2px 4px">29. NAME &amp; ADDRESS OF ORGANIZATION<br>(Write in full)</th>
-    <th colspan="2" style="width:20%">INCLUSIVE DATES<br>(dd/mm/yyyy)</th>
+    <th rowspan="2" style="width:44%;text-align:left;padding:2px 5px">29. &nbsp;&nbsp;&nbsp; NAME &amp; ADDRESS OF ORGANIZATION<br><span style="font-weight:normal;font-style:italic">(Write in full)</span></th>
+    <th colspan="2" style="width:18%">INCLUSIVE DATES<br>(dd/mm/yyyy)</th>
     <th rowspan="2" style="width:13%">NUMBER OF<br>HOURS</th>
     <th rowspan="2" style="width:25%">POSITION / NATURE OF WORK</th>
   </tr>
-  <tr><th style="width:10%">From</th><th style="width:10%">To</th></tr>
+  <tr><th>From</th><th>To</th></tr>
   ${volRows}
 </table>
-<div style="font-size:6.3px;font-style:italic;margin-top:1px">(Continue on separate sheet if necessary)</div>
+<div class="italic-note">(Continue on separate sheet if necessary)</div>
 
-<div class="shdr" style="margin-top:4px">VII. LEARNING AND DEVELOPMENT (L&amp;D) INTERVENTIONS/TRAINING PROGRAMS ATTENDED</div>
+<div class="shdr" style="margin-top:3px">VII. LEARNING AND DEVELOPMENT (L&amp;D) INTERVENTIONS/TRAINING PROGRAMS ATTENDED</div>
 <table>
   <tr>
-    <th rowspan="2" style="width:38%;text-align:left;padding:2px 4px">30. TITLE OF LEARNING AND DEVELOPMENT INTERVENTIONS/TRAINING PROGRAMS<br>(Write in full)</th>
-    <th colspan="2" style="width:20%">INCLUSIVE DATES OF<br>ATTENDANCE<br>(dd/mm/yyyy)</th>
+    <th rowspan="2" style="width:36%;text-align:left;padding:2px 5px">30. &nbsp;&nbsp;&nbsp; TITLE OF LEARNING AND DEVELOPMENT INTERVENTIONS/TRAINING PROGRAMS<br><span style="font-weight:normal;font-style:italic">(Write in full)</span></th>
+    <th colspan="2" style="width:16%">INCLUSIVE DATES OF<br>ATTENDANCE<br>(dd/mm/yyyy)</th>
     <th rowspan="2" style="width:11%">NUMBER OF<br>HOURS</th>
-    <th rowspan="2" style="width:14%">Type of L&amp;D<br>(Managerial/<br>Supervisory/<br>Technical/etc)</th>
-    <th rowspan="2" style="width:21%">CONDUCTED/<br>SPONSORED BY<br>(Write in full)</th>
+    <th rowspan="2" style="width:14%">Type of L&amp;D<br><span style="font-weight:normal;font-style:italic">( Managerial/<br>Supervisory/<br>Technical/etc)</span></th>
+    <th rowspan="2" style="width:23%">CONDUCTED/ SPONSORED BY<br><span style="font-weight:normal;font-style:italic">(Write in full)</span></th>
   </tr>
-  <tr><th style="width:10%">From</th><th style="width:10%">To</th></tr>
+  <tr><th>From</th><th>To</th></tr>
   ${trRows}
 </table>
-<div style="font-size:6.3px;font-style:italic;margin-top:1px">(Continue on separate sheet if necessary)</div>
+<div class="italic-note">(Continue on separate sheet if necessary)</div>
 
-<div class="shdr" style="margin-top:4px">VIII. OTHER INFORMATION</div>
+<div class="shdr" style="margin-top:3px">VIII. OTHER INFORMATION</div>
 <table>
   <tr>
-    <th style="width:33%;text-align:left;padding:2px 4px">31. SPECIAL SKILLS and HOBBIES</th>
-    <th style="width:34%;text-align:left;padding:2px 4px">32. NON-ACADEMIC DISTINCTIONS / RECOGNITION<br>(Write in full)</th>
-    <th style="width:33%;text-align:left;padding:2px 4px">33. MEMBERSHIP IN ASSOCIATION/ORGANIZATION<br>(Write in full)</th>
+    <th style="width:33%;text-align:left;padding:2px 5px">31. &nbsp;&nbsp; SPECIAL SKILLS and HOBBIES</th>
+    <th style="width:34%;text-align:left;padding:2px 5px">32. &nbsp;&nbsp; NON-ACADEMIC DISTINCTIONS / RECOGNITION<br><span style="font-weight:normal;font-style:italic">(Write in full)</span></th>
+    <th style="width:33%;text-align:left;padding:2px 5px">33. &nbsp;&nbsp; MEMBERSHIP IN ASSOCIATION/ORGANIZATION<br><span style="font-weight:normal;font-style:italic">(Write in full)</span></th>
   </tr>
+  ${otherRows}
+</table>
+<div class="italic-note">(Continue on separate sheet if necessary)</div>
+
+<!-- Page 3 signature bar -->
+<table style="margin-top:2px">
   <tr>
-    <td style="padding:4px;min-height:55px;vertical-align:top;font-size:7.5px">${v(e.otherInfo.skills)}</td>
-    <td style="padding:4px;vertical-align:top;font-size:7.5px">${v(e.otherInfo.distinctions)}</td>
-    <td style="padding:4px;vertical-align:top;font-size:7.5px">${v(e.otherInfo.memberships)}</td>
+    <td style="width:50%;padding:2px 5px;font-weight:bold;font-size:8px;text-align:center">SIGNATURE</td>
+    <td style="padding:2px 10px;font-size:7px;font-style:italic;text-align:center">(wet signature/e-signature/digital certificate)</td>
+    <td style="width:18%;padding:2px 5px;font-weight:bold;font-size:8px;text-align:center">DATE</td>
+    <td style="width:12%"></td>
   </tr>
 </table>
-<div style="font-size:6.3px;font-style:italic;margin-top:1px">(Continue on separate sheet if necessary)</div>
-
-<div class="sig-row">
-  <div class="sig-box">
-    <div style="font-weight:bold;font-size:7px;margin-bottom:2px">SIGNATURE</div>
-    <div class="sig-line"></div>
-    <div style="font-size:6.3px">(wet signature/e-signature/digital certificate)</div>
-  </div>
-  <div class="sig-box" style="max-width:160px">
-    <div style="font-weight:bold;font-size:7px;margin-bottom:2px">DATE</div>
-    <div class="sig-line"></div>
-  </div>
-</div>
 <div class="pfoot">CS FORM 212 (Revised 2025), Page 3 of 4</div>
 </div>
 
-<!-- ═══════════════════════════ PAGE 4 ═══════════════════════════ -->
+<!-- ══════════════════ PAGE 4 ══════════════════ -->
 <div class="page">
-<table style="border:none;width:100%">
-<tr style="border:none">
 
-<!-- LEFT COLUMN: Questions 34-41 + Declaration + Govt ID -->
-<td style="border:none;width:72%;vertical-align:top;padding-right:4px">
+<!-- Two-column layout: questions (left 73%) | photo (right 27%) -->
+<table style="border:none;width:100%"><tr style="border:none">
 
-<table style="width:100%;margin-bottom:3px">
+<!-- LEFT COLUMN -->
+<td style="border:none;width:73%;vertical-align:top;padding-right:3px">
+
+<!-- Questions 34-40 -->
+<table style="margin-bottom:3px">
   <!-- 34 -->
-  <tr><td colspan="2" style="padding:2px 4px;font-size:7.5px;background:#f5f5f5">
-    <b>34.</b> Are you related by consanguinity or affinity to the appointing or recommending authority, or to the chief of bureau or office or to the person who has immediate supervision over you in the Office, Bureau or Department where you will be apppointed,
+  <tr><td colspan="2" style="padding:3px 5px;font-size:7.5px">
+    <b>34.</b>&nbsp; Are you related by consanguinity or affinity to the appointing or recommending authority, or to the chief of bureau or office or to the person who has immediate supervision over you in the Office, Bureau or Department where you will be apppointed,
   </td></tr>
   <tr>
-    <td style="padding:2px 4px 2px 14px;font-size:7.5px;width:72%">a. within the third degree?</td>
-    <td class="yn-cell">${yn(q.q34a)}</td>
+    <td style="padding:2px 5px;font-size:7.5px">a. within the third degree?</td>
+    <td class="yn-td">${yn(q.q34a)}</td>
   </tr>
   <tr>
-    <td style="padding:2px 4px 2px 14px;font-size:7.5px">b. within the fourth degree (for Local Government Unit - Career Employees)?</td>
-    <td class="yn-cell">${yn(q.q34b)}</td>
+    <td style="padding:2px 5px;font-size:7.5px">b. within the fourth degree (for Local Government Unit - Career Employees)?</td>
+    <td class="yn-td">${yn(q.q34b)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:2px 4px 3px 14px;font-size:7px">
-    If YES, give details: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:200px">&nbsp;${v(q.q34det)}</span>
+  <tr><td colspan="2" style="padding:1px 5px 4px;font-size:7px;border-bottom:0.5px solid #777">
+    If YES, give details: ${line(240)}
   </td></tr>
 
-  <!-- 35 -->
+  <!-- 35a -->
   <tr>
-    <td style="padding:2px 4px 2px 4px;font-size:7.5px"><b>35. a.</b> Have you ever been found guilty of any administrative offense?</td>
-    <td class="yn-cell">${yn(q.q35a)}</td>
+    <td style="padding:3px 5px;font-size:7.5px"><b>35.</b>&nbsp; a. Have you ever been found guilty of any administrative offense?</td>
+    <td class="yn-td">${yn(q.q35a)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:2px 4px 2px 14px;font-size:7px">
-    If YES, give details: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:200px">&nbsp;${v(q.q35aDet)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px;font-size:7px">If YES, give details: ${line(240)}</td></tr>
+  <tr><td colspan="2" style="padding:1px 5px 4px;border-bottom:0.5px solid #777">&nbsp;</td></tr>
+
+  <!-- 35b -->
   <tr>
-    <td style="padding:2px 4px 2px 4px;font-size:7.5px"><b>b.</b> Have you been criminally charged before any court?</td>
-    <td class="yn-cell">${yn(q.q35b)}</td>
+    <td style="padding:3px 5px;font-size:7.5px">b. Have you been criminally charged before any court?</td>
+    <td class="yn-td">${yn(q.q35b)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:1px 4px 1px 14px;font-size:7px">
-    If YES, give details: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:200px">&nbsp;${v(q.q35bDet)}</span>
-  </td></tr>
-  <tr class="det-row"><td colspan="2" style="padding:1px 4px 3px 14px;font-size:7px">
-    Date Filed: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:90px">&nbsp;${v(q.q35bDate)}</span>
-    &nbsp; Status of Case/s: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:90px">&nbsp;${v(q.q35bStatus)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px;font-size:7px">If YES, give details: ${line(240)}</td></tr>
+  <tr><td colspan="2" style="padding:1px 5px;font-size:7px">Date Filed: ${line(130)} &nbsp;&nbsp; Status of Case/s: ${line(110)}</td></tr>
+  <tr><td colspan="2" style="padding:1px 5px 4px;border-bottom:0.5px solid #777">&nbsp;</td></tr>
 
   <!-- 36 -->
-  <tr style="background:#f5f5f5">
-    <td style="padding:2px 4px;font-size:7.5px"><b>36.</b> Have you ever been convicted of any crime or violation of any law, decree, ordinance or regulation by any court or tribunal?</td>
-    <td class="yn-cell">${yn(q.q36)}</td>
+  <tr>
+    <td style="padding:3px 5px;font-size:7.5px"><b>36.</b>&nbsp; Have you ever been convicted of any crime or violation of any law, decree, ordinance or regulation by any court or tribunal?</td>
+    <td class="yn-td">${yn(q.q36)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:2px 4px 3px 14px;font-size:7px">
-    If YES, give details: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:200px">&nbsp;${v(q.q36Det)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px;font-size:7px">If YES, give details: ${line(240)}</td></tr>
+  <tr><td colspan="2" style="padding:1px 5px 4px;border-bottom:0.5px solid #777">&nbsp;</td></tr>
 
   <!-- 37 -->
-  <tr style="background:#f5f5f5">
-    <td style="padding:2px 4px;font-size:7.5px"><b>37.</b> Have you ever been separated from the service in any of the following modes: resignation, retirement, dropped from the rolls, dismissal, termination, end of term, finished contract or phased out (abolition) in the public or private sector?</td>
-    <td class="yn-cell">${yn(q.q37)}</td>
+  <tr>
+    <td style="padding:3px 5px;font-size:7.5px"><b>37.</b>&nbsp; Have you ever been separated from the service in any of the following modes: resignation, retirement, dropped from the rolls, dismissal, termination, end of term, finished contract or phased out (abolition) in the public or private sector?</td>
+    <td class="yn-td">${yn(q.q37)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:2px 4px 3px 14px;font-size:7px">
-    If YES, give details: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:200px">&nbsp;${v(q.q37Det)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px 4px;font-size:7px;border-bottom:0.5px solid #777">If YES, give details: ${line(240)}</td></tr>
 
-  <!-- 38 -->
+  <!-- 38a -->
   <tr>
-    <td style="padding:2px 4px 2px 4px;font-size:7.5px"><b>38. a.</b> Have you ever been a candidate in a national or local election held within the last year (except Barangay election)?</td>
-    <td class="yn-cell">${yn(q.q38a)}</td>
+    <td style="padding:3px 5px;font-size:7.5px"><b>38.</b>&nbsp; a. Have you ever been a candidate in a national or local election held within the last year (except Barangay election)?</td>
+    <td class="yn-td">${yn(q.q38a)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:1px 4px 2px 14px;font-size:7px">
-    If YES, give details: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:200px">&nbsp;${v(q.q38aDet)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px 4px;font-size:7px;border-bottom:0.5px solid #777">If YES, give details: ${line(240)}</td></tr>
+
+  <!-- 38b -->
   <tr>
-    <td style="padding:2px 4px 2px 4px;font-size:7.5px"><b>b.</b> Have you resigned from the government service during the three (3)-month period before the last election to promote/actively campaign for a national or local candidate?</td>
-    <td class="yn-cell">${yn(q.q38b)}</td>
+    <td style="padding:3px 5px;font-size:7.5px">b. Have you resigned from the government service during the three (3)-month period before the last election to promote/actively campaign for a national or local candidate?</td>
+    <td class="yn-td">${yn(q.q38b)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:1px 4px 3px 14px;font-size:7px">
-    If YES, give details: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:200px">&nbsp;${v(q.q38bDet)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px 4px;font-size:7px;border-bottom:0.5px solid #777">If YES, give details: ${line(240)}</td></tr>
 
   <!-- 39 -->
-  <tr style="background:#f5f5f5">
-    <td style="padding:2px 4px;font-size:7.5px"><b>39.</b> Have you acquired the status of an immigrant or permanent resident of another country?</td>
-    <td class="yn-cell">${yn(q.q39)}</td>
+  <tr>
+    <td style="padding:3px 5px;font-size:7.5px"><b>39.</b>&nbsp; Have you acquired the status of an immigrant or permanent resident of another country?</td>
+    <td class="yn-td">${yn(q.q39)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:2px 4px 3px 14px;font-size:7px">
-    If YES, give details (country): <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:160px">&nbsp;${v(q.q39Det)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px 4px;font-size:7px;border-bottom:0.5px solid #777">If YES, give details (country): ${line(200)}</td></tr>
 
   <!-- 40 -->
-  <tr><td colspan="2" style="padding:2px 4px;font-size:7.5px">
-    <b>40.</b> Pursuant to: (a) Indigenous People's Act (RA 8371); (b) Magna Carta for Disabled Persons (RA 7277, as amended); and (c) Expanded Solo Parents Welfare Act (RA 11861), please answer the following items:
-  </td></tr>
+  <tr><td colspan="2" style="padding:3px 5px;font-size:7.5px"><b>40.</b>&nbsp; Pursuant to: (a) Indigenous People's Act (RA 8371); (b) Magna Carta for Disabled Persons (RA 7277, as amended); and (c) Expanded Solo Parents Welfare Act (RA 11861), please answer the following items:</td></tr>
   <tr>
-    <td style="padding:2px 4px 2px 14px;font-size:7.5px">a. Are you a member of any indigenous group?</td>
-    <td class="yn-cell">${yn(q.q40a)}</td>
+    <td style="padding:2px 5px;font-size:7.5px">a.&nbsp;&nbsp; Are you a member of any indigenous group?</td>
+    <td class="yn-td">${yn(q.q40a)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:1px 4px 2px 14px;font-size:7px">
-    If YES, please specify: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:160px">&nbsp;${v(q.q40aSpec)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px;font-size:7px">If YES, please specify: ${line(200)}</td></tr>
   <tr>
-    <td style="padding:2px 4px 2px 14px;font-size:7.5px">b. Are you a person with disability?</td>
-    <td class="yn-cell">${yn(q.q40b)}</td>
+    <td style="padding:2px 5px;font-size:7.5px">b.&nbsp;&nbsp; Are you a person with disability?</td>
+    <td class="yn-td">${yn(q.q40b)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:1px 4px 2px 14px;font-size:7px">
-    If YES, please specify ID No: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:140px">&nbsp;${v(q.q40bId)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px;font-size:7px">If YES, please specify ID No: ${line(180)}</td></tr>
   <tr>
-    <td style="padding:2px 4px 2px 14px;font-size:7.5px">c. Are you a solo parent?</td>
-    <td class="yn-cell">${yn(q.q40c)}</td>
+    <td style="padding:2px 5px;font-size:7.5px">c.&nbsp;&nbsp; Are you a solo parent?</td>
+    <td class="yn-td">${yn(q.q40c)}</td>
   </tr>
-  <tr class="det-row"><td colspan="2" style="padding:1px 4px 3px 14px;font-size:7px">
-    If YES, please specify ID No: <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:140px">&nbsp;${v(q.q40cId)}</span>
-  </td></tr>
+  <tr><td colspan="2" style="padding:1px 5px 3px;font-size:7px;border-bottom:0.5px solid #777">If YES, please specify ID No: ${line(180)}</td></tr>
 </table>
 
 <!-- 41. References -->
-<div style="font-size:7.5px;font-weight:bold;margin-bottom:2px">41. REFERENCES (Person not related by consanguinity or affinity to applicant /appointee)</div>
-<table style="margin-bottom:4px">
+<div style="font-size:7.5px;font-weight:bold;padding:1px 0 2px">41.&nbsp;&nbsp; REFERENCES <span style="font-weight:normal;font-style:italic">(Person not related by consanguinity or affinity to applicant /appointee)</span></div>
+<table style="margin-bottom:3px">
   <tr>
-    <th style="width:38%;text-align:left;padding:2px 4px">NAME</th>
-    <th style="width:36%;text-align:left;padding:2px 4px">OFFICE / RESIDENTIAL ADDRESS</th>
-    <th style="width:26%;text-align:left;padding:2px 4px">CONTACT NO. AND/OR EMAIL</th>
+    <th style="width:36%;padding:2px 5px">NAME</th>
+    <th style="width:34%;padding:2px 5px">OFFICE / RESIDENTIAL ADDRESS</th>
+    <th style="padding:2px 5px">CONTACT NO. AND/OR<br>EMAIL</th>
   </tr>
   ${refs.map(r=>`<tr>
-    <td style="padding:3px 4px;font-size:7.5px">${v(r.name)}</td>
-    <td style="padding:3px 4px;font-size:7.5px">${v(r.address)}</td>
-    <td style="padding:3px 4px;font-size:7.5px">${v(r.contact)}</td>
+    <td style="padding:5px 5px;font-size:7.5px">${v(r.name)}</td>
+    <td style="padding:5px 5px;font-size:7.5px">${v(r.address)}</td>
+    <td style="padding:5px 5px;font-size:7.5px">${v(r.contact)}</td>
   </tr>`).join('')}
 </table>
 
 <!-- 42. Declaration -->
-<div style="font-size:7px;margin-bottom:4px;line-height:1.55;border:0.5px solid #555;padding:4px">
-  <b>42.</b> I declare under oath that I have personally accomplished this Personal Data Sheet which is a true, correct, and complete statement pursuant to the provisions of pertinent laws, rules, and regulations of the Republic of the Philippines. I authorize the agency head/authorized representative to verify/validate the contents stated herein. I agree that any misrepresentation made in this document and its attachments shall cause the filing of administrative/criminal case/s against me.
+<div style="font-size:7.5px;margin-bottom:4px;line-height:1.6;text-align:justify">
+  <b>42.</b>&nbsp; I declare under oath that I have personally accomplished this Personal Data Sheet which is a true, correct, and complete statement pursuant to the provisions of pertinent laws, rules, and regulations of the Republic of the Philippines. I authorize the agency head/authorized representative to verify/validate the contents stated herein. &nbsp;&nbsp;&nbsp; I agree that any misrepresentation made in this document and its attachments shall cause the filing of administrative/criminal case/s against me.
 </div>
 
-<!-- Govt ID + Signature -->
-<table style="margin-bottom:3px">
+<!-- Govt ID + Signature box -->
+<table style="margin-bottom:2px">
   <tr>
-    <td style="padding:2px 4px;width:65%;vertical-align:top">
-      <span class="lbl">Government Issued ID (i.e.Passport, GSIS, SSS, PRC, Driver's License, etc.)<br>PLEASE INDICATE ID Number and Date of Issuance</span>
+    <td style="padding:2px 5px;width:52%;vertical-align:top">
+      <div style="font-size:6.5px;font-style:italic">Government Issued ID (i.e.Passport, GSIS, SSS, PRC, Driver's License, etc.)</div>
+      <div style="font-size:6.5px;font-style:italic">PLEASE INDICATE ID Number and Date of Issuance</div>
     </td>
-    <td rowspan="4" style="padding:6px;text-align:center;vertical-align:top;width:35%">
-      <div style="font-size:6.5px;margin-bottom:2px">(wet signature/e-signature/digital certificate)</div>
-      <div style="height:28px;border-bottom:0.5px solid #000;width:90%;margin:0 auto"></div>
-      <div style="font-size:7px;margin-top:4px;font-weight:bold">Signature (Sign inside the box)</div>
+    <td rowspan="5" style="padding:4px 6px;text-align:center;vertical-align:top;width:48%">
+      <div style="font-size:6.5px;font-style:italic;margin-bottom:2px">(wet signature/e-signature/digital certificate)</div>
+      <div style="height:30px;border-bottom:0.5px solid #000;width:90%;margin:0 auto 2px"></div>
+      <div style="font-size:7px;font-weight:normal">Signature (Sign inside the box)</div>
     </td>
   </tr>
-  <tr><td style="padding:2px 4px"><span class="lbl">Government Issued ID:</span><span class="val">${v(e.govtId)}</span></td></tr>
-  <tr><td style="padding:2px 4px"><span class="lbl">ID/License/Passport No.:</span><span class="val">${v(e.govtIdNo)}</span></td></tr>
-  <tr><td style="padding:2px 4px"><span class="lbl">Date/Place of Issuance:</span><span class="val">${v(e.govtIdIssuance)}</span></td></tr>
-</table>
-<table style="margin-bottom:4px">
+  <tr><td style="padding:2px 5px"><span class="lbl">Government Issued ID:</span><span class="val">${v(e.govtId)}</span></td></tr>
+  <tr><td style="padding:2px 5px"><span class="lbl">ID/License/Passport No.:</span><span class="val">${v(e.govtIdNo)}</span></td></tr>
+  <tr><td style="padding:2px 5px"><span class="lbl">Date/Place of Issuance:</span><span class="val">${v(e.govtIdIssuance)}</span></td></tr>
   <tr>
-    <td style="padding:2px 4px;width:55%"><span class="lbl">Date Accomplished:</span><span class="val">${v(e.dateAccomplished)}</span></td>
-    <td style="padding:2px 4px">
-      <span class="lbl">Right Thumbmark</span>
-      <div style="height:36px;border:0.5px solid #999;width:65px;margin-top:2px"></div>
+    <td style="padding:2px 5px">
+      <table class="nb" style="width:100%"><tr>
+        <td style="width:55%;padding:0"><span class="lbl">Date Accomplished</span><span class="val">${v(e.dateAccomplished)}</span></td>
+        <td style="padding:0">
+          <span class="lbl">Right Thumbmark</span>
+          <div style="width:55px;height:30px;border:0.5px solid #999;margin-top:1px"></div>
+        </td>
+      </tr></table>
     </td>
   </tr>
 </table>
 
-<div style="font-size:7px;margin-top:5px">SUBSCRIBED AND SWORN to before me this <span style="border-bottom:0.5px solid #000;display:inline-block;min-width:120px">&nbsp;</span>, affiant exhibiting his/her validly issued government ID as indicated above.</div>
-<div style="margin-top:22px;padding-top:2px;border-top:0.5px solid #000;width:52%;font-size:6.8px;text-align:center">
-  <b>Person Administering Oath</b><br>
-  <span style="font-size:6.3px">(wet signature/e-signature/digital certificate except for notary public)</span>
+<!-- Subscribed and sworn -->
+<div style="font-size:7.5px;margin-top:6px">
+  SUBSCRIBED AND SWORN to before me this ${line(130)}, affiant exhibiting his/her validly issued government ID as indicated above.
+</div>
+<div style="margin-top:30px;display:flex;justify-content:center">
+  <div style="text-align:center;width:60%">
+    <div style="border-top:0.5px solid #000;padding-top:2px">
+      <div style="font-size:7.5px;font-style:italic;font-weight:bold">(wet signature/e-signature/digital certificate except for notary public)</div>
+      <div style="font-size:8px;margin-top:3px">Person Administering Oath</div>
+    </div>
+  </div>
 </div>
 
-</td>
+</td><!-- end left column -->
 
 <!-- RIGHT COLUMN: Photo box -->
-<td style="border:0.5px solid #555;width:28%;vertical-align:top;padding:6px;text-align:center">
-  <div style="font-size:7px;font-weight:bold;margin-bottom:4px">PHOTO</div>
-  <div style="font-size:6.3px;margin-bottom:3px">Passport-sized unfiltered digital<br>picture taken within the last 6 months</div>
-  <div style="font-size:6.5px;font-weight:bold;margin-bottom:4px">4.5 cm. X 3.5 cm</div>
-  <div style="width:3.5cm;height:4.5cm;border:0.5px dashed #999;margin:0 auto;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#aaa">
-    <div style="font-size:6.5px;color:#bbb">Photo Here</div>
-  </div>
-  <div style="margin-top:30px;border-top:0.5px solid #000;padding-top:3px;font-size:6.5px">
-    (wet signature/e-signature/<br>digital certificate)
-  </div>
-  <div style="margin-top:30px;border-top:0.5px solid #000;padding-top:3px;font-size:6.5px">
-    Right Thumbmark
-  </div>
+<td style="border:0.5px solid #777;width:27%;vertical-align:top;padding:5px;text-align:center">
+  <div style="font-size:6.5px;margin-bottom:2px;line-height:1.5">Passport-sized unfiltered digital<br>picture taken within<br>the last 6 months<br><b>4.5 cm. X 3.5 cm</b></div>
+  <div style="width:3.5cm;height:4.5cm;border:0.5px solid #bbb;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:7px">PHOTO</div>
+  <div style="font-size:7px;font-weight:bold;margin-top:3px">PHOTO</div>
 </td>
 
-</tr>
-</table>
+</tr></table>
 
 <div class="pfoot">CS FORM 212 (Revised 2025), Page 4 of 4</div>
 </div>
