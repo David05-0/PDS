@@ -144,22 +144,98 @@ tr:hover td{background:var(--gray-50)}
 #toast.error{background:var(--red-light);color:var(--red);border:1px solid #fca5a5}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:4px}
-</style>
+
+/* ══ LOGIN OVERLAY ══ */
+#loginOverlay{position:fixed;inset:0;z-index:9999;background:var(--navy);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Sans',sans-serif}
+#loginOverlay.hidden{display:none}
+.login-box{background:var(--white);border-radius:16px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.login-header{background:var(--navy);padding:32px 36px 28px;text-align:center}
+.login-logo{width:52px;height:52px;background:rgba(255,255,255,.13);border-radius:14px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:24px}
+.login-title{color:#fff;font-size:18px;font-weight:700;margin-bottom:4px}
+.login-sub{color:rgba(255,255,255,.55);font-size:11px;letter-spacing:.5px;text-transform:uppercase}
+.login-body{padding:32px 36px}
+.login-role-tabs{display:flex;background:var(--gray-100);border-radius:10px;padding:4px;margin-bottom:24px;gap:4px}
+.lrt{flex:1;padding:8px;border-radius:8px;border:none;background:transparent;font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all .18s}
+.lrt.active{background:var(--white);color:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.login-field{margin-bottom:16px}
+.login-field label{display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:6px}
+.login-field input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);outline:none;transition:border-color .15s}
+.login-field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,86,160,.09)}
+.login-emp-sel{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);outline:none;background:var(--white)}
+.login-emp-sel:focus{border-color:var(--accent)}
+.login-btn{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13.5px;font-weight:700;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;margin-top:4px;transition:background .15s}
+.login-btn:hover{background:#174d91}
+.login-err{background:var(--red-light);color:var(--red);border:1px solid #fca5a5;border-radius:8px;padding:9px 13px;font-size:12px;font-weight:500;margin-bottom:14px;display:none}
+.login-hint{text-align:center;margin-top:18px;font-size:11px;color:var(--text-muted);background:var(--gray-50);border-radius:8px;padding:10px 14px;line-height:1.7}
+.login-hint b{color:var(--text)}
+.login-footer-bar{padding:14px 36px;border-top:1px solid var(--border);text-align:center;font-size:10px;color:var(--text-muted)}
+
+/* ══ LOGGED-IN USER CHIP ══ */
+.user-chip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.10);border:1.5px solid rgba(255,255,255,.22);border-radius:8px;padding:5px 12px;cursor:default}
+.user-avatar{width:24px;height:24px;border-radius:6px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:12px}
+.user-name-chip{font-size:11px;font-weight:600;color:#fff;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-role-chip{font-size:9.5px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.4px}
+.logout-btn{padding:5px 11px;border-radius:6px;border:1.5px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.75);cursor:pointer;font-size:11px;font-weight:500;font-family:'IBM Plex Sans',sans-serif;transition:all .15s}
+.logout-btn:hover{background:rgba(255,255,255,.12);color:#fff}
+
+/* ══ MANAGE USERS PANEL ══ */
+#page-users .card{margin-bottom:0}
+.user-form-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:16px}
+.user-form-grid .fld label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px;display:block}
+.user-form-grid .fld input,.user-form-grid .fld select{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);background:var(--white);outline:none}
+.user-form-grid .fld input:focus{border-color:var(--accent)}
+
 </head>
 <body>
+
+<!-- ══ LOGIN OVERLAY ══ -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <div class="login-header">
+      <div class="login-logo">📋</div>
+      <div class="login-title">PDS Management System</div>
+      <div class="login-sub">CS Form 212 · Revised 2025</div>
+    </div>
+    <div class="login-body">
+      <div class="login-role-tabs">
+        <button class="lrt active" id="lrtAdmin" onclick="setLoginRole('admin')">👤 Admin / HR</button>
+        <button class="lrt" id="lrtEmp" onclick="setLoginRole('employee')">🧑‍💼 Employee</button>
+      </div>
+      <div id="loginErr" class="login-err"></div>
+      <!-- ADMIN FIELDS -->
+      <div id="adminLoginFields">
+        <div class="login-field"><label>Username</label><input type="text" id="loginUser" placeholder="admin" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"></div>
+        <div class="login-field"><label>Password</label><input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      </div>
+      <!-- EMPLOYEE FIELDS -->
+      <div id="empLoginFields" style="display:none">
+        <div class="login-field"><label>Select Your Name</label>
+          <select class="login-emp-sel" id="loginEmpSel"><option value="">— Choose your name —</option></select>
+        </div>
+        <div class="login-field"><label>Password</label><input type="password" id="loginEmpPass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      </div>
+      <button class="login-btn" onclick="doLogin()">Sign In</button>
+      <div class="login-hint" id="loginHint">
+        <b>Admin:</b> admin / admin123<br>
+        <b>Employees</b> use password: <b>pds2025</b><br>
+        <span style="font-size:10px;color:var(--gray-400)">(Change credentials in Manage Users after login)</span>
+      </div>
+    </div>
+    <div class="login-footer-bar">Republic of the Philippines · Civil Service Commission</div>
+  </div>
+</div>
 
 <div id="topbar">
   <div class="tb-brand">
     <div class="tb-icon">📋</div>
     <div><div class="tb-title">PDS Management System</div><div class="tb-sub">CS FORM 212 · REVISED 2025</div></div>
   </div>
-  <div class="tb-right">
-    <span class="role-lbl">View as:</span>
-    <button class="role-btn active" id="btnAdmin" onclick="switchRole('admin')">👤 Admin</button>
-    <button class="role-btn" id="btnEmp" onclick="switchRole('employee')">🧑‍💼 Employee</button>
-    <select id="empSel" style="display:none" onchange="currentEmpId=this.value;renderMyPDS()">
-      <option value="NEW">— Select Employee —</option>
-    </select>
+  <div class="tb-right" id="tbRight">
+    <div class="user-chip">
+      <div class="user-avatar" id="tbAvatar">👤</div>
+      <div><div class="user-name-chip" id="tbName">—</div><div class="user-role-chip" id="tbRoleLbl">—</div></div>
+    </div>
+    <button class="logout-btn" onclick="doLogout()">Sign Out</button>
   </div>
 </div>
 
@@ -171,6 +247,7 @@ tr:hover td{background:var(--gray-50)}
     <div class="nav-item" data-page="employees" onclick="navigate('employees')">👥 Employees</div>
     <div class="nav-item" data-page="training" onclick="navigate('training')">🎓 Training &amp; L&amp;D</div>
     <div class="nav-item" data-page="reports" onclick="navigate('reports')">📈 Monthly Reports</div>
+    <div class="nav-item" data-page="users" onclick="navigate('users')">🔐 Manage Users</div>
   </div>
   <div id="empNav" style="display:none">
     <div class="nav-item active" data-page="myPDS" onclick="navigate('myPDS')">📋 My PDS</div>
@@ -261,12 +338,215 @@ tr:hover td{background:var(--gray-50)}
     <div class="page-title">My Personal Data Sheet</div>
     <div id="myPDSContent"></div>
   </div>
+  <!-- MANAGE USERS -->
+  <div class="page" id="page-users">
+    <div class="page-title">🔐 Manage Users</div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-hdr">➕ Add / Update User Account</div>
+      <div style="padding:16px 18px">
+        <div class="user-form-grid">
+          <div class="fld"><label>Role</label><select id="uRole"><option value="admin">Admin / HR</option><option value="employee">Employee</option></select></div>
+          <div class="fld"><label>Username</label><input type="text" id="uUser" placeholder="e.g. jdelacruz"></div>
+          <div class="fld"><label>Password</label><input type="password" id="uPass" placeholder="New password"></div>
+          <div class="fld" id="uEmpWrap"><label>Link to Employee</label><select id="uEmpLink"><option value="">— None —</option></select></div>
+          <div><button class="btn btn-primary" onclick="saveUser()">Save User</button></div>
+        </div>
+        <div id="uErr" style="color:var(--red);font-size:12px;margin-top:4px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-hdr">👥 All User Accounts</div>
+      <table><thead><tr><th>Username</th><th>Role</th><th>Linked Employee</th><th>Actions</th></tr></thead>
+      <tbody id="usersTable"></tbody></table>
+    </div>
+  </div>
+
 </div>
 </div>
 
 <div id="toast"></div>
 
 <script>
+// ══════════ AUTH ══════════
+let currentUser = null; // { username, role, empId|null }
+let loginRole = 'admin';
+
+function loadUsers() {
+  try {
+    const u = localStorage.getItem('pds:users');
+    if (u) return JSON.parse(u);
+  } catch {}
+  // Default accounts
+  return [
+    { username:'admin', password:'admin123', role:'admin', empId:null },
+  ];
+}
+function saveUsers(users) {
+  try { localStorage.setItem('pds:users', JSON.stringify(users)); } catch {}
+}
+
+function setLoginRole(r) {
+  loginRole = r;
+  document.getElementById('lrtAdmin').classList.toggle('active', r==='admin');
+  document.getElementById('lrtEmp').classList.toggle('active', r==='employee');
+  document.getElementById('adminLoginFields').style.display = r==='admin' ? 'block' : 'none';
+  document.getElementById('empLoginFields').style.display = r==='employee' ? 'block' : 'none';
+  document.getElementById('loginErr').style.display = 'none';
+  // populate employee dropdown
+  if (r==='employee') {
+    const sel = document.getElementById('loginEmpSel');
+    const emps = loadEmployeesRaw();
+    const users = loadUsers();
+    sel.innerHTML = '<option value="">— Choose your name —</option>' +
+      emps.map(e => {
+        const linked = users.find(u => u.empId === e.id && u.role === 'employee');
+        return `<option value="${esc(e.id)}">${esc(e.personal.surname)}, ${esc(e.personal.firstName)} (${esc(e.id)})</option>`;
+      }).join('');
+  }
+}
+
+function loadEmployeesRaw() {
+  try { const e = localStorage.getItem('pds:employees'); return e ? JSON.parse(e) : []; } catch { return []; }
+}
+
+function showLoginErr(msg) {
+  const el = document.getElementById('loginErr');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+function doLogin() {
+  const users = loadUsers();
+  document.getElementById('loginErr').style.display = 'none';
+  if (loginRole === 'admin') {
+    const u = document.getElementById('loginUser').value.trim();
+    const p = document.getElementById('loginPass').value;
+    if (!u || !p) return showLoginErr('Please enter username and password.');
+    const found = users.find(x => x.username === u && x.password === p && x.role === 'admin');
+    if (!found) return showLoginErr('Invalid username or password.');
+    currentUser = { username: u, role: 'admin', empId: null };
+  } else {
+    const empId = document.getElementById('loginEmpSel').value;
+    const p = document.getElementById('loginEmpPass').value;
+    if (!empId) return showLoginErr('Please select your name.');
+    if (!p) return showLoginErr('Please enter your password.');
+    const emps = loadEmployeesRaw();
+    const emp = emps.find(e => e.id === empId);
+    if (!emp) return showLoginErr('Employee not found.');
+    // Find linked user account OR allow default password
+    const linked = users.find(x => x.empId === empId && x.role === 'employee');
+    const correctPw = linked ? linked.password : 'pds2025';
+    const correctUser = linked ? linked.username : empId;
+    if (p !== correctPw) return showLoginErr('Incorrect password.');
+    currentUser = { username: linked ? linked.username : empId, role: 'employee', empId };
+  }
+  document.getElementById('loginOverlay').classList.add('hidden');
+  initApp();
+}
+
+function doLogout() {
+  currentUser = null;
+  // Reset fields
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginEmpPass').value = '';
+  document.getElementById('loginErr').style.display = 'none';
+  setLoginRole('admin');
+  document.getElementById('loginOverlay').classList.remove('hidden');
+}
+
+function initApp() {
+  // Set topbar chip
+  const avatarMap = { admin:'👤', employee:'🧑‍💼' };
+  document.getElementById('tbAvatar').textContent = avatarMap[currentUser.role];
+  document.getElementById('tbRoleLbl').textContent = currentUser.role === 'admin' ? 'Admin / HR' : 'Employee';
+  let displayName = currentUser.username;
+  if (currentUser.empId) {
+    const emps = loadEmployeesRaw();
+    const emp = emps.find(e => e.id === currentUser.empId);
+    if (emp) displayName = emp.personal.surname + ', ' + emp.personal.firstName;
+  }
+  document.getElementById('tbName').textContent = displayName;
+  // Apply role
+  role = currentUser.role;
+  document.getElementById('adminNav').style.display = role === 'admin' ? 'block' : 'none';
+  document.getElementById('empNav').style.display = role === 'employee' ? 'block' : 'none';
+  if (role === 'employee') currentEmpId = currentUser.empId || 'NEW';
+  loadData();
+  popEmpSels();
+  document.getElementById('reportMonth').value = new Date().toISOString().slice(0,7);
+  if (role === 'admin') { renderDashboard(); navigate('dashboard'); }
+  else { renderMyPDS(); navigate('myPDS'); }
+}
+
+// ══════════ MANAGE USERS ══════════
+function renderUsers() {
+  const users = loadUsers();
+  const uEmpLink = document.getElementById('uEmpLink');
+  if (uEmpLink) {
+    uEmpLink.innerHTML = '<option value="">— None —</option>' +
+      employees.map(e => `<option value="${esc(e.id)}">${esc(e.personal.surname)}, ${esc(e.personal.firstName)} (${esc(e.id)})</option>`).join('');
+  }
+  const tbody = document.getElementById('usersTable');
+  if (!tbody) return;
+  tbody.innerHTML = users.map((u,i) => {
+    const empLabel = u.empId ? (() => { const e = employees.find(x=>x.id===u.empId); return e ? esc(empName(e)) + ' (' + esc(u.empId) + ')' : esc(u.empId); })() : '—';
+    const isSelf = currentUser && u.username === currentUser.username;
+    return `<tr>
+      <td style="font-weight:600;font-family:'IBM Plex Mono',monospace">${esc(u.username)}${isSelf?'<span style="margin-left:6px;font-size:10px;color:var(--accent);font-family:\'IBM Plex Sans\',sans-serif;font-weight:400">(you)</span>':''}</td>
+      <td><span class="badge ${u.role==='admin'?'badge-approved':'badge-tech'}">${esc(u.role)}</span></td>
+      <td style="color:var(--text-muted)">${empLabel}</td>
+      <td><div class="btn-group">
+        <button class="btn btn-sm btn-blue" onclick="editUser(${i})">✏ Edit</button>
+        ${!isSelf?`<button class="btn btn-sm btn-red" onclick="deleteUser(${i})">✕ Delete</button>`:''}
+      </div></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">No users yet.</td></tr>';
+}
+
+function editUser(i) {
+  const users = loadUsers();
+  const u = users[i];
+  document.getElementById('uRole').value = u.role;
+  document.getElementById('uUser').value = u.username;
+  document.getElementById('uPass').value = '';
+  document.getElementById('uEmpLink').value = u.empId || '';
+  document.getElementById('uUser').dataset.editIdx = i;
+}
+
+function saveUser() {
+  const uRole = document.getElementById('uRole').value;
+  const uUser = document.getElementById('uUser').value.trim();
+  const uPass = document.getElementById('uPass').value;
+  const uEmpId = document.getElementById('uEmpLink').value;
+  const errEl = document.getElementById('uErr');
+  errEl.textContent = '';
+  if (!uUser) return errEl.textContent = 'Username is required.';
+  const users = loadUsers();
+  const editIdx = document.getElementById('uUser').dataset.editIdx;
+  const isEdit = editIdx !== undefined && editIdx !== '';
+  const dupIdx = users.findIndex((u,i) => u.username === uUser && (!isEdit || i !== Number(editIdx)));
+  if (dupIdx >= 0) return errEl.textContent = 'Username already exists.';
+  if (isEdit) {
+    users[Number(editIdx)].role = uRole;
+    users[Number(editIdx)].username = uUser;
+    if (uPass) users[Number(editIdx)].password = uPass;
+    users[Number(editIdx)].empId = uEmpId || null;
+    delete document.getElementById('uUser').dataset.editIdx;
+  } else {
+    if (!uPass) return errEl.textContent = 'Password is required for new users.';
+    users.push({ username:uUser, password:uPass, role:uRole, empId:uEmpId||null });
+  }
+  saveUsers(users);
+  document.getElementById('uUser').value=''; document.getElementById('uPass').value=''; document.getElementById('uEmpLink').value='';
+  toast('User account saved.'); renderUsers();
+}
+
+function deleteUser(i) {
+  if (!confirm('Delete this user account?')) return;
+  const users = loadUsers();
+  users.splice(i,1); saveUsers(users); renderUsers(); toast('User deleted.','warning');
+}
+
 // ══════════ STATE ══════════
 let role = 'admin', currentEmpId = 'NEW', editingPDS = null, activeTab = 0;
 const MONTHS = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -341,15 +621,14 @@ function navigate(page) {
   else if (page === 'training') renderTraining();
   else if (page === 'reports') renderReports();
   else if (page === 'myPDS') renderMyPDS();
+  else if (page === 'users') renderUsers();
 }
 
+// switchRole is now handled by the login system (initApp)
 function switchRole(r) {
   role = r;
-  document.getElementById('btnAdmin').classList.toggle('active', r === 'admin');
-  document.getElementById('btnEmp').classList.toggle('active', r === 'employee');
   document.getElementById('adminNav').style.display = r === 'admin' ? 'block' : 'none';
   document.getElementById('empNav').style.display = r === 'employee' ? 'block' : 'none';
-  document.getElementById('empSel').style.display = r === 'employee' ? 'block' : 'none';
   navigate(r === 'admin' ? 'dashboard' : 'myPDS');
 }
 
@@ -1329,18 +1608,15 @@ ${refs.map(r=>`<tr><td style="padding:2px 4px;min-height:12px">${v(r.name)}</td>
 function popEmpSels() {
   const ts = document.getElementById('trEmpId');
   if (ts) { const v=ts.value; ts.innerHTML='<option value="">— Select Employee —</option>'+employees.map(e=>`<option value="${e.id}">${esc(e.id)} — ${esc(e.personal.surname)}, ${esc(e.personal.firstName)}</option>`).join(''); ts.value=v; }
-  const es = document.getElementById('empSel');
-  if (es) { const v=es.value; es.innerHTML='<option value="NEW">— Select Employee —</option>'+employees.map(e=>`<option value="${e.id}">${esc(e.personal.surname)}, ${esc(e.personal.firstName)}</option>`).join(''); es.value=v||currentEmpId; }
   const df = document.getElementById('filterDept');
   if (df) { const v=df.value; df.innerHTML='<option value="">All Departments</option>'+getDepts().map(d=>`<option value="${esc(d)}"${v===d?' selected':''}>${esc(d)}</option>`).join(''); df.value=v; }
 }
 
 // ══════════ INIT ══════════
 document.addEventListener('DOMContentLoaded', () => {
-  loadData();
-  document.getElementById('reportMonth').value = new Date().toISOString().slice(0,7);
-  popEmpSels();
-  renderDashboard();
+  // Pre-load employees for employee login dropdown
+  setLoginRole('admin');
+  // Hide app shell until logged in — the overlay blocks it visually already
 });
 </script>
 </body>
