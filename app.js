@@ -184,13 +184,86 @@ const MONTHS = ['','January','February','March','April','May','June','July','Aug
 let employees = [], trainings = [];
 
 // ══════════ STORAGE ══════════
+const DUMMY_EMPLOYEE = {
+  id:'EMP-001', status:'approved', submittedAt:'2025-03-10', updatedAt:'2025-03-10',
+  department:'Administrative Division', position:'Administrative Officer II', dateHired:'2019-06-15',
+  personal:{
+    surname:'DELA CRUZ', firstName:'JUAN', middleName:'SANTOS', nameExt:'JR.',
+    dob:'1990-04-22', pob:'Baguio City, Benguet', sex:'Male', civil:'Married',
+    height:'1.70', weight:'68', blood:'O+',
+    umid:'1234-5678-9012', pagibig:'1234-5678-9012', philhealth:'12-345678901-2',
+    philsys:'1234-5678-9012-3', tin:'123-456-789', agencyNo:'2019-0615-001',
+    citizenship:'Filipino', dualCitizenship:false, dualCountry:'',
+    residHouseNo:'123', residStreet:'Session Road', residSubdiv:'', residBrgy:'Brgy. Lualhati',
+    residCity:'Baguio City', residProv:'Benguet', residZip:'2600',
+    permHouseNo:'123', permStreet:'Session Road', permSubdiv:'', permBrgy:'Brgy. Lualhati',
+    permCity:'Baguio City', permProv:'Benguet', permZip:'2600',
+    telNo:'074-442-1234', mobileNo:'0917-123-4567', email:'juan.delacruz@gov.ph'
+  },
+  family:{
+    spouseSurname:'DELA CRUZ', spouseFirstName:'MARIA', spouseMiddleName:'REYES', spouseExt:'',
+    spouseOccupation:'Teacher', spouseEmployer:'DepEd Baguio City', spouseBusiness:'', spouseTel:'0918-765-4321',
+    fatherSurname:'DELA CRUZ', fatherFirstName:'PEDRO', fatherMiddleName:'GARCIA', fatherExt:'SR.',
+    motherSurname:'SANTOS', motherFirstName:'ROSARIO', motherMiddleName:'BAUTISTA',
+    children:[
+      {name:'DELA CRUZ, JOSE SANTOS', dob:'2015-08-12'},
+      {name:'DELA CRUZ, ANA MARIA', dob:'2018-02-27'}
+    ]
+  },
+  education:[
+    {level:'College', school:'University of the Philippines Baguio', course:'Bachelor of Public Administration', from:'2008', to:'2012', units:'', yearGrad:'2012', honors:'Cum Laude'},
+    {level:'Secondary', school:'Baguio City National High School', course:'', from:'2004', to:'2008', units:'', yearGrad:'2008', honors:'With Honors'},
+    {level:'Elementary', school:'Baguio City Central School', course:'', from:'1998', to:'2004', units:'', yearGrad:'2004', honors:''}
+  ],
+  eligibility:[
+    {name:'Career Service Professional', rating:'84.50', dateConf:'2013-08-18', place:'PRC Testing Center, Baguio City', licNo:'CSP-2013-08541', licValid:'N/A'}
+  ],
+  workExp:[
+    {from:'2019-06-15', to:'Present', position:'Administrative Officer II', dept:'Administrative Division, Baguio City Government', status:'Permanent', govtService:'Yes'},
+    {from:'2014-03-01', to:'2019-06-14', position:'Administrative Aide VI', dept:'Civil Registrar\'s Office, Baguio City', status:'Permanent', govtService:'Yes'},
+    {from:'2012-07-01', to:'2014-02-28', position:'Records Officer I', dept:'Department of Interior and Local Government – CAR', status:'Contractual', govtService:'Yes'}
+  ],
+  voluntaryWork:[
+    {org:'Baguio City Red Cross Chapter', from:'2016-01-01', to:'2016-12-31', hours:'80', position:'Volunteer Coordinator'}
+  ],
+  otherInfo:{
+    skills:'Computer Literacy (MS Office, Google Workspace), Public Speaking, Records Management',
+    distinctions:'Best Employee Award – Baguio City Government (2022), Outstanding Public Servant – CAR Regional Office (2020)',
+    memberships:'Philippine Association of Administrative Professionals, Baguio City Government Employees Association'
+  },
+  questions:{
+    q34a:false, q34b:false, q34det:'', q35a:false, q35aDet:'', q35b:false, q35bDet:'', q35bDate:'', q35bStatus:'',
+    q36:false, q36Det:'', q37:false, q37Det:'', q38a:false, q38aDet:'', q38b:false, q38bDet:'',
+    q39:false, q39Det:'', q40a:false, q40aSpec:'', q40b:false, q40bId:'', q40c:false, q40cId:''
+  },
+  references:[
+    {name:'ANTONIO REYES', address:'Baguio City Hall, Baguio City', contact:'074-442-8000'},
+    {name:'DR. CYNTHIA LOZANO', address:'UP Baguio, Gov. Pack Road, Baguio City', contact:'074-442-3045'},
+    {name:'ENGR. MARK VALDEZ', address:'DPWH-CAR, Baguio City', contact:'0920-888-1234'}
+  ],
+  govtId:'Philippine Passport', govtIdNo:'P1234567A', govtIdIssuance:'2021-05-10 / DFA Baguio',
+  dateAccomplished:'2025-03-10'
+};
+
+const DUMMY_TRAINING = {
+  id:'TR-001', empId:'EMP-001', title:'Records Management and E-Government Systems Training',
+  from:'2025-02-03', to:'2025-02-07', hours:'40', type:'Technical',
+  conductedBy:'Civil Service Commission – CAR Regional Office', addedAt:'2025-02-10'
+};
+
 function loadData() {
   try {
     const e = localStorage.getItem('pds:employees');
     const t = localStorage.getItem('pds:trainings');
     employees = e ? JSON.parse(e) : [];
     trainings = t ? JSON.parse(t) : [];
-  } catch { employees = []; trainings = []; }
+    // Seed dummy data if empty
+    if (employees.length === 0) {
+      employees = [DUMMY_EMPLOYEE];
+      trainings = [DUMMY_TRAINING];
+      saveData();
+    }
+  } catch { employees = [DUMMY_EMPLOYEE]; trainings = [DUMMY_TRAINING]; }
 }
 function saveData() {
   try {
