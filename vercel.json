@@ -3,11 +3,13 @@
   "builds": [
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "styles.css", "use": "@vercel/static" },
-    { "src": "app.js", "use": "@vercel/static" }
+    { "src": "app.js", "use": "@vercel/static" },
+    { "src": "pds_template.pdf", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/styles.css", "dest": "/styles.css" },
     { "src": "/app.js", "dest": "/app.js" },
+    { "src": "/pds_template.pdf", "dest": "/pds_template.pdf" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
