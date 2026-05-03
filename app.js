@@ -932,14 +932,10 @@ function openMyNew() { editingPDS = blankPDS(); navigate('pdsForm'); renderPDSFo
 function openMyEdit(id) { editingPDS = JSON.parse(JSON.stringify(employees.find(e=>e.id===id)||blankPDS())); navigate('pdsForm'); renderPDSForm(); }
 
 // ══════════ PRINT PDS — fills official CS Form 212 (Revised 2025) PDF ══════════
-
-// Base64-encoded blank CS Form 212 PDF
-const PDS_PDF_B64 =  + pdf_b64 + ;
-
 async function printPDS(id) {
   const e = employees.find(x => x.id === id);
   if (!e) { toast('Employee not found.', 'error'); return; }
-  toast('Generating PDF...', 'success');
+  toast('Generating PDF…', 'success');
 
   const tr = empTr(id);
   const pr = e.personal;
@@ -949,311 +945,264 @@ async function printPDS(id) {
     ? e.references
     : [{name:'',address:'',contact:''},{name:'',address:'',contact:''},{name:'',address:'',contact:''}];
 
-  // Load pdf-lib from CDN
-  const { PDFDocument, rgb, StandardFonts } = await import('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm');
+  try {
+    // Load pdf-lib
+    const { PDFDocument, rgb, StandardFonts } = await import('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm');
 
-  // Decode the blank PDF
-  const pdfBytes = Uint8Array.from(atob(PDS_PDF_B64), c => c.charCodeAt(0));
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const pages = pdfDoc.getPages();
+    // Fetch the blank PDS template PDF (must be deployed alongside app.js)
+    const templateRes = await fetch('pds_template.pdf');
+    if (!templateRes.ok) throw new Error('Could not load pds_template.pdf');
+    const templateBytes = await templateRes.arrayBuffer();
 
-  // PDF page is 595.32 x 841.92 pts
-  // pdfplumber coords: top=0 is TOP of page, y increases downward
-  // pdf-lib coords: y=0 is BOTTOM, y increases upward
-  // Convert: pdf_lib_y = pageHeight - pdfplumber_top
-  const PH = 841.92;
-  const PW = 595.32;
+    const pdfDoc = await PDFDocument.load(templateBytes);
+    const font     = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const pages = pdfDoc.getPages();
+    const PH = 841.92; // A4 height in pts
 
-  // Helper: draw text at pdfplumber coordinates
-  function txt(page, text, x, topY, opts = {}) {
-    if (!text && text !== 0) return;
-    const str = String(text);
-    const size = opts.size || 7.5;
-    const maxW = opts.maxW || null;
-    const f = opts.bold ? fontBold : font;
-    // Auto-shrink font if text too wide
-    let finalSize = size;
-    if (maxW) {
-      let w = f.widthOfTextAtSize(str, size);
-      if (w > maxW) finalSize = size * (maxW / w);
-      if (finalSize < 4) finalSize = 4;
+    // Draw text at pdfplumber-style coordinates (top-from-top)
+    // pdf-lib uses y=0 at bottom, so convert: lib_y = PH - top - fontSize
+    function txt(page, text, x, topY, opts) {
+      if (text === null || text === undefined || text === '') return;
+      const str = String(text);
+      const size = (opts && opts.size) || 7.5;
+      const maxW = (opts && opts.maxW) || null;
+      const f = (opts && opts.bold) ? fontBold : font;
+      let fs = size;
+      if (maxW) {
+        const w = f.widthOfTextAtSize(str, size);
+        if (w > maxW) fs = Math.max(4, size * (maxW / w));
+      }
+      page.drawText(str, {
+        x: x,
+        y: PH - topY - fs,
+        size: fs,
+        font: f,
+        color: rgb(0, 0, 0),
+      });
     }
-    page.drawText(str, {
-      x: x,
-      y: PH - topY - finalSize,
-      size: finalSize,
-      font: f,
-      color: rgb(0, 0, 0),
-    });
-  }
 
-  // Helper: draw checkbox X
-  function chk(page, checked, cx, cy) {
-    if (checked) {
-      page.drawText('✓', { x: cx, y: PH - cy, size: 7, font: font, color: rgb(0,0,0) });
+    function yn(page, val, yesX, noX, topY) {
+      if (val)  txt(page, '/', yesX, topY, {size:8});
+      else      txt(page, '/', noX,  topY, {size:8});
     }
+
+    // ══ PAGE 1 ══
+    const p1 = pages[0];
+    txt(p1, pr.surname,    120, 119, {size:8, bold:true, maxW:200});
+    txt(p1, pr.firstName,  120, 135, {size:8, bold:true, maxW:200});
+    txt(p1, pr.nameExt,    460, 135, {size:7.5, maxW:80});
+    txt(p1, pr.middleName, 120, 151, {size:8, bold:true, maxW:200});
+    txt(p1, pr.dob,        120, 164, {size:7.5, maxW:110});
+    txt(p1, pr.pob,        120, 195, {size:7.5, maxW:200});
+
+    // Sex checkboxes
+    if (pr.sex === 'Male')   txt(p1, '/', 163, 212, {size:8});
+    if (pr.sex === 'Female') txt(p1, '/', 206, 212, {size:8});
+
+    // Civil status
+    if (pr.civil === 'Single')    txt(p1, '/', 137, 227, {size:8});
+    if (pr.civil === 'Married')   txt(p1, '/', 183, 227, {size:8});
+    if (pr.civil === 'Widowed')   txt(p1, '/', 137, 237, {size:8});
+    if (pr.civil === 'Separated') txt(p1, '/', 183, 237, {size:8});
+    if (!['Single','Married','Widowed','Separated'].includes(pr.civil) && pr.civil)
+      txt(p1, pr.civil, 165, 246, {size:7, maxW:70});
+
+    txt(p1, pr.height,     120, 265, {size:7.5, maxW:80});
+    txt(p1, pr.weight,     120, 282, {size:7.5, maxW:80});
+    txt(p1, pr.blood,      120, 299, {size:7.5, maxW:80});
+    txt(p1, pr.umid,       120, 317, {size:7.5, maxW:130});
+    txt(p1, pr.pagibig,    120, 335, {size:7.5, maxW:130});
+    txt(p1, pr.philhealth, 120, 354, {size:7.5, maxW:130});
+    txt(p1, pr.philsys,    120, 372, {size:7.5, maxW:130});
+    txt(p1, pr.tin,        120, 390, {size:7.5, maxW:130});
+    txt(p1, pr.agencyNo,   120, 408, {size:7.5, maxW:130});
+
+    // Citizenship
+    if (!pr.dualCitizenship) txt(p1, '/', 432, 175, {size:8});
+    else txt(p1, '/', 467, 175, {size:8});
+
+    // Residential Address
+    txt(p1, pr.residHouseNo, 351, 240, {size:7, maxW:70});
+    txt(p1, pr.residStreet,  430, 240, {size:7, maxW:120});
+    txt(p1, pr.residSubdiv,  351, 253, {size:7, maxW:70});
+    txt(p1, pr.residBrgy,    430, 253, {size:7, maxW:120});
+    txt(p1, pr.residCity,    351, 267, {size:7, maxW:70});
+    txt(p1, pr.residProv,    430, 267, {size:7, maxW:120});
+    txt(p1, pr.residZip,     351, 282, {size:7, maxW:60});
+
+    // Permanent Address
+    txt(p1, pr.permHouseNo, 351, 308, {size:7, maxW:70});
+    txt(p1, pr.permStreet,  430, 308, {size:7, maxW:120});
+    txt(p1, pr.permSubdiv,  351, 322, {size:7, maxW:70});
+    txt(p1, pr.permBrgy,    430, 322, {size:7, maxW:120});
+    txt(p1, pr.permCity,    351, 336, {size:7, maxW:70});
+    txt(p1, pr.permProv,    430, 336, {size:7, maxW:120});
+    txt(p1, pr.permZip,     351, 352, {size:7, maxW:60});
+
+    txt(p1, pr.telNo,    330, 372, {size:7.5, maxW:230});
+    txt(p1, pr.mobileNo, 330, 390, {size:7.5, maxW:230});
+    txt(p1, pr.email,    330, 408, {size:7.5, maxW:230});
+
+    // Family
+    txt(p1, fam.spouseSurname,    140, 437, {size:7.5, maxW:200});
+    txt(p1, fam.spouseExt,        380, 452, {size:7, maxW:80});
+    txt(p1, fam.spouseFirstName,  140, 452, {size:7.5, maxW:200});
+    txt(p1, fam.spouseMiddleName, 140, 467, {size:7.5, maxW:200});
+    txt(p1, fam.spouseOccupation, 140, 482, {size:7.5, maxW:200});
+    txt(p1, fam.spouseEmployer,   140, 498, {size:7.5, maxW:200});
+    txt(p1, fam.spouseBusiness,   140, 513, {size:7.5, maxW:200});
+    txt(p1, fam.spouseTel,        140, 528, {size:7.5, maxW:200});
+    txt(p1, fam.fatherSurname,    140, 543, {size:7.5, maxW:200});
+    txt(p1, fam.fatherExt,        380, 558, {size:7, maxW:80});
+    txt(p1, fam.fatherFirstName,  140, 558, {size:7.5, maxW:200});
+    txt(p1, fam.fatherMiddleName, 140, 573, {size:7.5, maxW:200});
+    txt(p1, fam.motherSurname,    140, 604, {size:7.5, maxW:200});
+    txt(p1, fam.motherFirstName,  140, 619, {size:7.5, maxW:200});
+    txt(p1, fam.motherMiddleName, 140, 634, {size:7.5, maxW:200});
+
+    // Children (right column)
+    const children = fam.children || [];
+    for (let i = 0; i < Math.min(children.length, 12); i++) {
+      const ry = 437 + (i * 15.7);
+      txt(p1, children[i].name, 356, ry, {size:7, maxW:130});
+      txt(p1, children[i].dob,  492, ry, {size:7, maxW:65});
+    }
+
+    // Education
+    const eduLevels = ['Elementary','Secondary','Vocational','College','Graduate'];
+    const eduYStart = 697;
+    for (let i = 0; i < 5; i++) {
+      const ed = (e.education||[]).find(x => x.level && x.level.toLowerCase().startsWith(eduLevels[i].toLowerCase()));
+      if (!ed) continue;
+      const ry = eduYStart + (i * 19.2);
+      txt(p1, ed.school,   154, ry, {size:6.5, maxW:130});
+      txt(p1, ed.course,   288, ry, {size:6.5, maxW:105});
+      txt(p1, ed.from,     397, ry, {size:6.5, maxW:28});
+      txt(p1, ed.to,       427, ry, {size:6.5, maxW:28});
+      txt(p1, ed.units,    458, ry, {size:6.5, maxW:30});
+      txt(p1, ed.yearGrad, 491, ry, {size:6.5, maxW:30});
+      txt(p1, ed.honors,   523, ry, {size:6.5, maxW:60});
+    }
+
+    // ══ PAGE 2 — Eligibility + Work Experience ══
+    const p2 = pages[1];
+    const eligList = e.eligibility || [];
+    for (let i = 0; i < Math.min(eligList.length, 9); i++) {
+      const r = eligList[i];
+      const ry = 55 + (i * 17);
+      txt(p2, r.name,     36,  ry, {size:6.5, maxW:210});
+      txt(p2, r.rating,   256, ry, {size:6.5, maxW:40});
+      txt(p2, r.dateConf, 300, ry, {size:6.5, maxW:60});
+      txt(p2, r.place,    364, ry, {size:6.5, maxW:100});
+      txt(p2, r.licNo,    468, ry, {size:6.5, maxW:60});
+      txt(p2, r.licValid, 531, ry, {size:6.5, maxW:50});
+    }
+    const workList = e.workExp || [];
+    for (let i = 0; i < Math.min(workList.length, 28); i++) {
+      const r = workList[i];
+      const ry = 263 + (i * 19.5);
+      txt(p2, r.from,         36,  ry, {size:6.5, maxW:52});
+      txt(p2, r.to,           90,  ry, {size:6.5, maxW:52});
+      txt(p2, r.position,     146, ry, {size:6.5, maxW:135});
+      txt(p2, r.dept,         283, ry, {size:6.5, maxW:165});
+      txt(p2, r.salary||'',   450, ry, {size:6.5, maxW:35});
+      txt(p2, r.status,       487, ry, {size:6.5, maxW:55});
+      txt(p2, r.govtService,  545, ry, {size:6.5, maxW:35});
+    }
+
+    // ══ PAGE 3 — Voluntary Work + Training + Other Info ══
+    const p3 = pages[2];
+    const volList = e.voluntaryWork || [];
+    for (let i = 0; i < Math.min(volList.length, 8); i++) {
+      const r = volList[i];
+      const ry = 55 + (i * 18);
+      txt(p3, r.org||r.name||'', 36,  ry, {size:6.5, maxW:240});
+      txt(p3, r.from,            285, ry, {size:6.5, maxW:48});
+      txt(p3, r.to,              336, ry, {size:6.5, maxW:48});
+      txt(p3, r.hours,           387, ry, {size:6.5, maxW:45});
+      txt(p3, r.position,        435, ry, {size:6.5, maxW:140});
+    }
+    for (let i = 0; i < Math.min(tr.length, 25); i++) {
+      const t = tr[i];
+      const ry = 257 + (i * 17.5);
+      txt(p3, t.title,       36,  ry, {size:6.5, maxW:248});
+      txt(p3, t.from,        287, ry, {size:6.5, maxW:48});
+      txt(p3, t.to,          338, ry, {size:6.5, maxW:48});
+      txt(p3, t.hours,       388, ry, {size:6.5, maxW:45});
+      txt(p3, t.type,        436, ry, {size:6.5, maxW:65});
+      txt(p3, t.conductedBy, 503, ry, {size:6.5, maxW:80});
+    }
+    const skillLines = ((e.otherInfo||{}).skills||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const distLines  = ((e.otherInfo||{}).distinctions||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const membLines  = ((e.otherInfo||{}).memberships||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const maxRows = Math.max(5, skillLines.length, distLines.length, membLines.length);
+    for (let i = 0; i < maxRows; i++) {
+      const ry = 677 + (i * 17);
+      if (skillLines[i]) txt(p3, skillLines[i], 36,  ry, {size:6.5, maxW:175});
+      if (distLines[i])  txt(p3, distLines[i],  216, ry, {size:6.5, maxW:175});
+      if (membLines[i])  txt(p3, membLines[i],  395, ry, {size:6.5, maxW:175});
+    }
+
+    // ══ PAGE 4 — Declarations + References + Gov't ID ══
+    const p4 = pages[3];
+    yn(p4, q.q34a,  390, 422, 65);
+    yn(p4, q.q34b,  390, 422, 80);
+    if (q.q34det)      txt(p4, q.q34det,     390, 100, {size:6.5, maxW:185});
+    yn(p4, q.q35a,  390, 422, 136);
+    if (q.q35aDet)     txt(p4, q.q35aDet,    390, 153, {size:6.5, maxW:185});
+    yn(p4, q.q35b,  390, 422, 178);
+    if (q.q35bDet)     txt(p4, q.q35bDet,    390, 196, {size:6.5, maxW:185});
+    if (q.q35bDate)    txt(p4, q.q35bDate,   390, 207, {size:6.5, maxW:90});
+    if (q.q35bStatus)  txt(p4, q.q35bStatus, 390, 218, {size:6.5, maxW:90});
+    yn(p4, q.q36,   390, 422, 236);
+    if (q.q36Det)      txt(p4, q.q36Det,     390, 253, {size:6.5, maxW:185});
+    yn(p4, q.q37,   390, 422, 278);
+    if (q.q37Det)      txt(p4, q.q37Det,     390, 296, {size:6.5, maxW:185});
+    yn(p4, q.q38a,  390, 422, 312);
+    if (q.q38aDet)     txt(p4, q.q38aDet,    390, 328, {size:6.5, maxW:185});
+    yn(p4, q.q38b,  390, 422, 342);
+    if (q.q38bDet)     txt(p4, q.q38bDet,    390, 358, {size:6.5, maxW:185});
+    yn(p4, q.q39,   390, 422, 372);
+    if (q.q39Det)      txt(p4, q.q39Det,     390, 390, {size:6.5, maxW:185});
+    yn(p4, q.q40a,  390, 422, 437);
+    if (q.q40aSpec)    txt(p4, q.q40aSpec,   390, 453, {size:6.5, maxW:185});
+    yn(p4, q.q40b,  390, 422, 464);
+    if (q.q40bId)      txt(p4, q.q40bId,     390, 480, {size:6.5, maxW:185});
+    yn(p4, q.q40c,  390, 422, 491);
+    if (q.q40cId)      txt(p4, q.q40cId,     390, 507, {size:6.5, maxW:185});
+
+    // References
+    for (let i = 0; i < 3; i++) {
+      const ry = 530 + (i * 18);
+      txt(p4, refs[i].name,    36,  ry, {size:7, maxW:240});
+      txt(p4, refs[i].address, 285, ry, {size:7, maxW:140});
+      txt(p4, refs[i].contact, 430, ry, {size:7, maxW:80});
+    }
+
+    // Gov't ID
+    txt(p4, e.govtId,           36, 672, {size:7, maxW:200});
+    txt(p4, e.govtIdNo,         36, 686, {size:7, maxW:200});
+    txt(p4, e.govtIdIssuance,   36, 700, {size:7, maxW:200});
+    txt(p4, e.dateAccomplished, 36, 715, {size:7, maxW:100});
+
+    // Download
+    const filledBytes = await pdfDoc.save();
+    const blob = new Blob([filledBytes], {type: 'application/pdf'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `PDS_${(pr.surname||'').toUpperCase()}_${(pr.firstName||'').toUpperCase()}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('PDF downloaded! ✓', 'success');
+
+  } catch(err) {
+    console.error('PDF generation error:', err);
+    toast('PDF error: ' + err.message, 'error');
   }
-
-  // ═══════════════════════════════════════════
-  // PAGE 1 — Personal Information
-  // ═══════════════════════════════════════════
-  const p1 = pages[0];
-
-  // 1. Surname
-  txt(p1, pr.surname, 120, 119, {size:8, bold:true, maxW:200});
-  // 2. First Name
-  txt(p1, pr.firstName, 120, 135, {size:8, bold:true, maxW:200});
-  // Name Extension
-  txt(p1, pr.nameExt, 460, 135, {size:7.5, maxW:80});
-  // Middle Name
-  txt(p1, pr.middleName, 120, 151, {size:8, bold:true, maxW:200});
-
-  // 3. Date of Birth
-  txt(p1, pr.dob, 120, 164, {size:7.5, maxW:110});
-  // 4. Place of Birth
-  txt(p1, pr.pob, 120, 195, {size:7.5, maxW:200});
-
-  // 5. Sex at Birth checkboxes
-  if (pr.sex === 'Male') txt(p1, '✓', 163, 212, {size:7});
-  else if (pr.sex === 'Female') txt(p1, '✓', 206, 212, {size:7});
-
-  // 6. Civil Status checkboxes  
-  if (pr.civil === 'Single')    txt(p1, '✓', 137, 227, {size:7});
-  if (pr.civil === 'Married')   txt(p1, '✓', 183, 227, {size:7});
-  if (pr.civil === 'Widowed')   txt(p1, '✓', 137, 237, {size:7});
-  if (pr.civil === 'Separated') txt(p1, '✓', 183, 237, {size:7});
-  if (!['Single','Married','Widowed','Separated'].includes(pr.civil))
-    txt(p1, pr.civil, 165, 246, {size:7, maxW:70});
-
-  // 7. Height, 8. Weight, 9. Blood Type
-  txt(p1, pr.height,  120, 265, {size:7.5, maxW:80});
-  txt(p1, pr.weight,  120, 282, {size:7.5, maxW:80});
-  txt(p1, pr.blood,   120, 299, {size:7.5, maxW:80});
-
-  // 10-15 IDs
-  txt(p1, pr.umid,       120, 317, {size:7.5, maxW:130});
-  txt(p1, pr.pagibig,    120, 335, {size:7.5, maxW:130});
-  txt(p1, pr.philhealth, 120, 354, {size:7.5, maxW:130});
-  txt(p1, pr.philsys,    120, 372, {size:7.5, maxW:130});
-  txt(p1, pr.tin,        120, 390, {size:7.5, maxW:130});
-  txt(p1, pr.agencyNo,   120, 408, {size:7.5, maxW:130});
-
-  // 16. Citizenship
-  if (!pr.dualCitizenship) txt(p1, '✓', 432, 175, {size:7});
-  else txt(p1, '✓', 467, 175, {size:7});
-
-  // 17. Residential Address
-  txt(p1, pr.residHouseNo, 351, 240, {size:7, maxW:70});
-  txt(p1, pr.residStreet,  430, 240, {size:7, maxW:120});
-  txt(p1, pr.residSubdiv,  351, 253, {size:7, maxW:70});
-  txt(p1, pr.residBrgy,    430, 253, {size:7, maxW:120});
-  txt(p1, pr.residCity,    351, 267, {size:7, maxW:70});
-  txt(p1, pr.residProv,    430, 267, {size:7, maxW:120});
-  txt(p1, pr.residZip,     351, 282, {size:7, maxW:60});
-
-  // 18. Permanent Address
-  txt(p1, pr.permHouseNo, 351, 308, {size:7, maxW:70});
-  txt(p1, pr.permStreet,  430, 308, {size:7, maxW:120});
-  txt(p1, pr.permSubdiv,  351, 322, {size:7, maxW:70});
-  txt(p1, pr.permBrgy,    430, 322, {size:7, maxW:120});
-  txt(p1, pr.permCity,    351, 336, {size:7, maxW:70});
-  txt(p1, pr.permProv,    430, 336, {size:7, maxW:120});
-  txt(p1, pr.permZip,     351, 352, {size:7, maxW:60});
-
-  // 19. Tel, 20. Mobile, 21. Email
-  txt(p1, pr.telNo,    330, 372, {size:7.5, maxW:230});
-  txt(p1, pr.mobileNo, 330, 390, {size:7.5, maxW:230});
-  txt(p1, pr.email,    330, 408, {size:7.5, maxW:230});
-
-  // ── II. Family Background ──
-  // 22. Spouse
-  txt(p1, fam.spouseSurname,   140, 437, {size:7.5, maxW:200});
-  txt(p1, fam.spouseExt,       380, 452, {size:7, maxW:80});
-  txt(p1, fam.spouseFirstName, 140, 452, {size:7.5, maxW:200});
-  txt(p1, fam.spouseMiddleName,140, 467, {size:7.5, maxW:200});
-  txt(p1, fam.spouseOccupation,140, 482, {size:7.5, maxW:200});
-  txt(p1, fam.spouseEmployer,  140, 498, {size:7.5, maxW:200});
-  txt(p1, fam.spouseBusiness,  140, 513, {size:7.5, maxW:200});
-  txt(p1, fam.spouseTel,       140, 528, {size:7.5, maxW:200});
-
-  // 24. Father
-  txt(p1, fam.fatherSurname,   140, 543, {size:7.5, maxW:200});
-  txt(p1, fam.fatherExt,       380, 558, {size:7, maxW:80});
-  txt(p1, fam.fatherFirstName, 140, 558, {size:7.5, maxW:200});
-  txt(p1, fam.fatherMiddleName,140, 573, {size:7.5, maxW:200});
-
-  // 25. Mother
-  txt(p1, fam.motherSurname,   140, 604, {size:7.5, maxW:200});
-  txt(p1, fam.motherFirstName, 140, 619, {size:7.5, maxW:200});
-  txt(p1, fam.motherMiddleName,140, 634, {size:7.5, maxW:200});
-
-  // 23. Children (right side, starting at ~436)
-  const children = fam.children || [];
-  for (let i = 0; i < Math.min(children.length, 12); i++) {
-    const rowY = 437 + (i * 15.7);
-    txt(p1, children[i].name, 356, rowY, {size:7, maxW:130});
-    txt(p1, children[i].dob,  492, rowY, {size:7, maxW:65});
-  }
-
-  // ── III. Education ──
-  const eduLevels = ['Elementary','Secondary','Vocational','College','Graduate'];
-  const eduYStart = 697;
-  for (let i = 0; i < 5; i++) {
-    const ed = (e.education||[]).find(x => x.level && x.level.toLowerCase().startsWith(eduLevels[i].toLowerCase()));
-    if (!ed) continue;
-    const ry = eduYStart + (i * 19.2);
-    txt(p1, ed.school,    154, ry, {size:6.5, maxW:130});
-    txt(p1, ed.course,    288, ry, {size:6.5, maxW:105});
-    txt(p1, ed.from,      397, ry, {size:6.5, maxW:28});
-    txt(p1, ed.to,        427, ry, {size:6.5, maxW:28});
-    txt(p1, ed.units,     458, ry, {size:6.5, maxW:30});
-    txt(p1, ed.yearGrad,  491, ry, {size:6.5, maxW:30});
-    txt(p1, ed.honors,    523, ry, {size:6.5, maxW:60});
-  }
-
-  // ═══════════════════════════════════════════
-  // PAGE 2 — Eligibility + Work Experience
-  // ═══════════════════════════════════════════
-  const p2 = pages[1];
-
-  // IV. Eligibility (rows start ~y=55, row height ~17)
-  const eligList = e.eligibility || [];
-  for (let i = 0; i < Math.min(eligList.length, 9); i++) {
-    const r = eligList[i];
-    const ry = 55 + (i * 17);
-    txt(p2, r.name,     36,  ry, {size:6.5, maxW:210});
-    txt(p2, r.rating,   256, ry, {size:6.5, maxW:40});
-    txt(p2, r.dateConf, 300, ry, {size:6.5, maxW:60});
-    txt(p2, r.place,    364, ry, {size:6.5, maxW:100});
-    txt(p2, r.licNo,    468, ry, {size:6.5, maxW:60});
-    txt(p2, r.licValid, 531, ry, {size:6.5, maxW:50});
-  }
-
-  // V. Work Experience (rows start ~y=263, row height ~19.5)
-  const workList = e.workExp || [];
-  for (let i = 0; i < Math.min(workList.length, 28); i++) {
-    const r = workList[i];
-    const ry = 263 + (i * 19.5);
-    txt(p2, r.from,     36,  ry, {size:6.5, maxW:52});
-    txt(p2, r.to,       90,  ry, {size:6.5, maxW:52});
-    txt(p2, r.position, 146, ry, {size:6.5, maxW:135});
-    txt(p2, r.dept,     283, ry, {size:6.5, maxW:165});
-    txt(p2, r.salary||'',450, ry, {size:6.5, maxW:35});
-    txt(p2, r.status,   487, ry, {size:6.5, maxW:55});
-    txt(p2, r.govtService, 545, ry, {size:6.5, maxW:35});
-  }
-
-  // ═══════════════════════════════════════════
-  // PAGE 3 — Voluntary Work + Training + Other Info
-  // ═══════════════════════════════════════════
-  const p3 = pages[2];
-
-  // VI. Voluntary Work (rows start ~y=55, row height ~18)
-  const volList = e.voluntaryWork || [];
-  for (let i = 0; i < Math.min(volList.length, 8); i++) {
-    const r = volList[i];
-    const ry = 55 + (i * 18);
-    txt(p3, r.org||r.name||'', 36,  ry, {size:6.5, maxW:240});
-    txt(p3, r.from,            285, ry, {size:6.5, maxW:48});
-    txt(p3, r.to,              336, ry, {size:6.5, maxW:48});
-    txt(p3, r.hours,           387, ry, {size:6.5, maxW:45});
-    txt(p3, r.position,        435, ry, {size:6.5, maxW:140});
-  }
-
-  // VII. Training/L&D (rows start ~y=257, row height ~17.5)
-  for (let i = 0; i < Math.min(tr.length, 25); i++) {
-    const t = tr[i];
-    const ry = 257 + (i * 17.5);
-    txt(p3, t.title,       36,  ry, {size:6.5, maxW:248});
-    txt(p3, t.from,        287, ry, {size:6.5, maxW:48});
-    txt(p3, t.to,          338, ry, {size:6.5, maxW:48});
-    txt(p3, t.hours,       388, ry, {size:6.5, maxW:45});
-    txt(p3, t.type,        436, ry, {size:6.5, maxW:65});
-    txt(p3, t.conductedBy, 503, ry, {size:6.5, maxW:80});
-  }
-
-  // VIII. Other Info (rows start ~y=677, row height ~17)
-  const skillLines = (e.otherInfo.skills||'').split(',').map(s=>s.trim()).filter(Boolean);
-  const distLines  = (e.otherInfo.distinctions||'').split(',').map(s=>s.trim()).filter(Boolean);
-  const membLines  = (e.otherInfo.memberships||'').split(',').map(s=>s.trim()).filter(Boolean);
-  const maxRows = Math.max(5, skillLines.length, distLines.length, membLines.length);
-  for (let i = 0; i < maxRows; i++) {
-    const ry = 677 + (i * 17);
-    if (skillLines[i]) txt(p3, skillLines[i], 36,  ry, {size:6.5, maxW:175});
-    if (distLines[i])  txt(p3, distLines[i],  216, ry, {size:6.5, maxW:175});
-    if (membLines[i])  txt(p3, membLines[i],  395, ry, {size:6.5, maxW:175});
-  }
-
-  // ═══════════════════════════════════════════
-  // PAGE 4 — Declarations + References + Gov't ID
-  // ═══════════════════════════════════════════
-  const p4 = pages[3];
-
-  // Q34 checkboxes (YES/NO)
-  const yn = (page, val, yesX, noX, topY) => {
-    txt(page, val ? '✓' : '', yesX, topY, {size:7});
-    txt(page, !val ? '✓' : '', noX, topY, {size:7});
-  };
-
-  yn(p4, q.q34a, 390, 422, 65);
-  yn(p4, q.q34b, 390, 422, 80);
-  if (q.q34det) txt(p4, q.q34det, 390, 100, {size:6.5, maxW:185});
-
-  yn(p4, q.q35a, 390, 422, 136);
-  if (q.q35aDet) txt(p4, q.q35aDet, 390, 153, {size:6.5, maxW:185});
-  yn(p4, q.q35b, 390, 422, 178);
-  if (q.q35bDet) txt(p4, q.q35bDet, 390, 196, {size:6.5, maxW:185});
-  if (q.q35bDate) txt(p4, q.q35bDate, 390, 207, {size:6.5, maxW:90});
-  if (q.q35bStatus) txt(p4, q.q35bStatus, 390, 218, {size:6.5, maxW:90});
-
-  yn(p4, q.q36, 390, 422, 236);
-  if (q.q36Det) txt(p4, q.q36Det, 390, 253, {size:6.5, maxW:185});
-
-  yn(p4, q.q37, 390, 422, 278);
-  if (q.q37Det) txt(p4, q.q37Det, 390, 296, {size:6.5, maxW:185});
-
-  yn(p4, q.q38a, 390, 422, 312);
-  if (q.q38aDet) txt(p4, q.q38aDet, 390, 328, {size:6.5, maxW:185});
-  yn(p4, q.q38b, 390, 422, 342);
-  if (q.q38bDet) txt(p4, q.q38bDet, 390, 358, {size:6.5, maxW:185});
-
-  yn(p4, q.q39, 390, 422, 372);
-  if (q.q39Det) txt(p4, q.q39Det, 390, 390, {size:6.5, maxW:185});
-
-  yn(p4, q.q40a, 390, 422, 437);
-  if (q.q40aSpec) txt(p4, q.q40aSpec, 390, 453, {size:6.5, maxW:185});
-  yn(p4, q.q40b, 390, 422, 464);
-  if (q.q40bId) txt(p4, q.q40bId, 390, 480, {size:6.5, maxW:185});
-  yn(p4, q.q40c, 390, 422, 491);
-  if (q.q40cId) txt(p4, q.q40cId, 390, 507, {size:6.5, maxW:185});
-
-  // 41. References
-  for (let i = 0; i < 3; i++) {
-    const ry = 530 + (i * 18);
-    txt(p4, refs[i].name,    36,  ry, {size:7, maxW:240});
-    txt(p4, refs[i].address, 285, ry, {size:7, maxW:140});
-    txt(p4, refs[i].contact, 430, ry, {size:7, maxW:80});
-  }
-
-  // Gov't ID fields
-  txt(p4, e.govtId,         36, 672, {size:7, maxW:200});
-  txt(p4, e.govtIdNo,       36, 686, {size:7, maxW:200});
-  txt(p4, e.govtIdIssuance, 36, 700, {size:7, maxW:200});
-  txt(p4, e.dateAccomplished, 36, 715, {size:7, maxW:100});
-
-  // ── Save and download ──
-  const filledPdfBytes = await pdfDoc.save();
-  const blob = new Blob([filledPdfBytes], {type: 'application/pdf'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `PDS_${(pr.surname||'').toUpperCase()}_${(pr.firstName||'').toUpperCase()}_CS212.pdf`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-  toast('PDF downloaded! ✓', 'success');
 }
+
 
 // ══════════ POPULATE SELECTS ══════════
 function popEmpSels() {
