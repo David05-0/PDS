@@ -176,4 +176,3 @@ tr:hover td{background:var(--gray-50)}
 .user-form-grid .fld label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px;display:block}
 .user-form-grid .fld input,.user-form-grid .fld select{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-family:'IBM Plex Sans',sans-serif;color:var(--text);background:var(--white);outline:none}
 .user-form-grid .fld input:focus{border-color:var(--accent)}
-
