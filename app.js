@@ -219,9 +219,9 @@ const DUMMY_EMPLOYEE = {
     {name:'Career Service Professional', rating:'84.50', dateConf:'2013-08-18', place:'PRC Testing Center, Baguio City', licNo:'CSP-2013-08541', licValid:'N/A'}
   ],
   workExp:[
-    {from:'2019-06-15', to:'Present', position:'Administrative Officer II', dept:'Administrative Division, Baguio City Government', status:'Permanent', govtService:'Y'},
-    {from:'2014-03-01', to:'2019-06-14', position:'Administrative Aide VI', dept:'Civil Registrar\'s Office, Baguio City', status:'Permanent', govtService:'Y'},
-    {from:'2012-07-01', to:'2014-02-28', position:'Records Officer I', dept:'Department of Interior and Local Government – CAR', status:'Contractual', govtService:'Y'}
+    {from:'2019-06-15', to:'Present', position:'Administrative Officer II', dept:'Administrative Division, Baguio City Government', status:'Permanent', govtService:'Yes'},
+    {from:'2014-03-01', to:'2019-06-14', position:'Administrative Aide VI', dept:'Civil Registrar\'s Office, Baguio City', status:'Permanent', govtService:'Yes'},
+    {from:'2012-07-01', to:'2014-02-28', position:'Records Officer I', dept:'Department of Interior and Local Government – CAR', status:'Contractual', govtService:'Yes'}
   ],
   voluntaryWork:[
     {org:'Baguio City Red Cross Chapter', from:'2016-01-01', to:'2016-12-31', hours:'80', position:'Volunteer Coordinator'}
@@ -436,7 +436,7 @@ function viewPDS(id) {
       : '<p class="empty-note">No records.</p>')}
     ${sec('V. Work Experience', e.workExp.length ?
       tbl(['From','To','Position','Department/Agency','Status','Gov\'t'],
-        e.workExp.map(r=>`<tr><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="font-weight:500">${esc(r.position)}</td><td>${esc(r.dept)}</td><td>${esc(r.status)}</td><td>${r.govtService==='Y'||r.govtService==='Yes'?'Yes':'No'}</td></tr>`).join(''))
+        e.workExp.map(r=>`<tr><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="font-weight:500">${esc(r.position)}</td><td>${esc(r.dept)}</td><td>${esc(r.status)}</td><td>${esc(r.govtService)}</td></tr>`).join(''))
       : '<p class="empty-note">No records.</p>')}
     ${sec('VII. L&D / Training Programs', tr.length ?
       tbl(['Title','From','To','Hours','Type','Conducted By'],
@@ -493,7 +493,7 @@ function buildPDSForm() {
 function swTab(i) { collectForm(); activeTab = i; buildPDSForm(); }
 function inp(id, val, ph='', type='text') { return `<input type="${type}" id="${id}" value="${esc(val)}" placeholder="${ph}">`; }
 function sel(id, val, opts) { return `<select id="${id}"><option value="">—</option>${opts.map(o=>`<option${val===o?' selected':''}>${esc(o)}</option>`).join('')}</select>`; }
-function fld(lbl, content, cls='') { return `<div class="fld${cls?' '+cls:''}"><label>${lbl}</label>${content}</div>`; }
+function fld(lbl, content, cls='') { return `<div class="fld${cls?' '+cls:''}""><label>${lbl}</label>${content}</div>`; }
 
 function tabPersonal(p) {
   const pr = p.personal;
@@ -628,7 +628,7 @@ function tabElig(p) {
       ${fld('Date of Exam/Conferment', `<input type="date" id="el_dt_${i}" value="${esc(e.dateConf)}">`, 's2')}
       ${fld('Place of Exam/Conferment', `<input id="el_pl_${i}" value="${esc(e.place)}">`)}
       ${fld('License No.', `<input id="el_ln_${i}" value="${esc(e.licNo)}">`)}
-      ${fld('License Valid Until', `<input id="el_lv_${i}" value="${esc(e.licValid)}" placeholder="N/A or date">`)}
+      ${fld('License Valid Until', `<input type="date" id="el_lv_${i}" value="${esc(e.licValid)}">`)}
     </div></div>`).join('')}</div>
   <button class="add-btn" onclick="addElig()">+ Add Eligibility</button></div>`;
 }
@@ -691,27 +691,22 @@ function tabOther(p) {
 
 function tabDecl(p) {
   const q = p.questions;
-  function di(qk, lbl, detId, extraFields) {
+  function di(qk, lbl, detId) {
     const ch = q[qk];
     const det = detId && ch ? `<div class="decl-det"><input type="text" id="decl_${detId}" value="${esc(q[detId])}" placeholder="If YES, give details…"></div>` : '';
-    const extra = (extraFields && ch) ? extraFields : '';
     return `<div class="decl-item"><div class="decl-row">
       <div class="decl-radios">
         <label><input type="radio" name="dq_${qk}" value="y"${ch?' checked':''} onchange="setDecl('${qk}','${detId||''}',true)"> Yes</label>
         <label><input type="radio" name="dq_${qk}" value="n"${!ch?' checked':''} onchange="setDecl('${qk}','${detId||''}',false)"> No</label>
       </div>
       <div class="decl-text">${lbl}</div>
-    </div>${det}${extra}</div>`;
+    </div>${det}</div>`;
   }
   return `<div class="fsec"><div class="fsec-title">IX. Declarations (Questions 34–40)</div>
     ${di('q34a','<b>34a.</b> Are you related by consanguinity or affinity to the appointing or recommending authority, or to the chief of bureau or office or to the person who has immediate supervision over you in the Office, Bureau or Department where you will be appointed, <b>within the third degree?</b>','q34det')}
     ${di('q34b','<b>34b.</b> Within the <b>fourth degree</b> (for Local Government Unit - Career Employees)?',null)}
     ${di('q35a','<b>35a.</b> Have you ever been found guilty of any administrative offense?','q35aDet')}
-    ${di('q35b','<b>35b.</b> Have you been criminally charged before any court?','q35bDet',
-      q.q35b ? `<div class="decl-det" style="display:flex;gap:8px">
-        <input type="text" id="decl_q35bDate" value="${esc(q.q35bDate)}" placeholder="Date Filed…" style="flex:1">
-        <input type="text" id="decl_q35bStatus" value="${esc(q.q35bStatus)}" placeholder="Status of Case/s…" style="flex:1">
-      </div>` : '')}
+    ${di('q35b','<b>35b.</b> Have you been criminally charged before any court?','q35bDet')}
     ${di('q36','<b>36.</b> Have you ever been convicted of any crime or violation of any law, decree, ordinance or regulation by any court or tribunal?','q36Det')}
     ${di('q37','<b>37.</b> Have you ever been separated from the service in any of the following modes: resignation, retirement, dropped from the rolls, dismissal, termination, end of term, finished contract or phased out (abolition) in the public or private sector?','q37Det')}
     ${di('q38a','<b>38a.</b> Have you ever been a candidate in a national or local election held within the last year (except Barangay election)?','q38aDet')}
@@ -770,7 +765,7 @@ function collectForm() {
   p.workExp.forEach((e,i) => { if (document.getElementById(`we_fr_${i}`)) { e.from=gv(`we_fr_${i}`); e.to=gv(`we_to_${i}`); e.position=gv(`we_po_${i}`); e.dept=gv(`we_de_${i}`); e.status=gv(`we_st_${i}`); e.govtService=gv(`we_gv_${i}`); } });
   p.voluntaryWork.forEach((e,i) => { if (document.getElementById(`vl_or_${i}`)) { e.org=gv(`vl_or_${i}`); e.from=gv(`vl_fr_${i}`); e.to=gv(`vl_to_${i}`); e.hours=gv(`vl_hr_${i}`); e.position=gv(`vl_po_${i}`); } });
   if (document.getElementById('f_skills')) { p.otherInfo.skills=gv('f_skills'); p.otherInfo.distinctions=gv('f_dists'); p.otherInfo.memberships=gv('f_membs'); }
-  ['q34det','q35aDet','q35bDet','q35bDate','q35bStatus','q36Det','q37Det','q38aDet','q38bDet','q39Det','q40aSpec','q40bId','q40cId'].forEach(k => { if (document.getElementById('decl_'+k)) p.questions[k] = gv('decl_'+k); });
+  ['q34det','q35aDet','q35bDet','q36Det','q37Det','q38aDet','q38bDet','q39Det','q40aSpec','q40bId','q40cId'].forEach(k => { if (document.getElementById('decl_'+k)) p.questions[k] = gv('decl_'+k); });
   if (p.references) p.references.forEach((r,i) => { if (document.getElementById(`rf_nm_${i}`)) { r.name=gv(`rf_nm_${i}`); r.address=gv(`rf_ad_${i}`); r.contact=gv(`rf_ct_${i}`); } });
   if (document.getElementById('f_govtId')) { p.govtId=gv('f_govtId'); p.govtIdNo=gv('f_govtIdNo'); p.govtIdIssuance=gv('f_govtIss'); p.dateAccomplished=gv('f_dateAcc'); }
 }
@@ -895,6 +890,13 @@ function printReport() {
 // ══════════ MY PDS ══════════
 function renderMyPDS() {
   const content = document.getElementById('myPDSContent');
+  if (currentEmpId === 'NEW' || !employees.find(e => e.id === currentEmpId)) {
+    const emp = employees.find(e => e.id === currentEmpId);
+    if (!emp) {
+      content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`;
+      return;
+    }
+  }
   const emp = employees.find(e => e.id === currentEmpId);
   if (!emp) { content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`; return; }
   const tr = empTr(emp.id);
@@ -981,210 +983,273 @@ async function printPDS(id) {
     }
 
     function yn(page, val, yesX, noX, topY) {
-      if (val === true || val === 'Y' || val === 'Yes' || val === 'y')
-        txt(page, '/', yesX, topY, {size:8});
-      else
-        txt(page, '/', noX,  topY, {size:8});
+      if (val)  txt(page, '/', yesX, topY, {size:8});
+      else      txt(page, '/', noX,  topY, {size:8});
     }
 
     // ══ PAGE 1 ══
+    // Coordinates measured from actual PDF template using pdfplumber
+    // txt(page, text, x, topY) where topY matches pdfplumber "top" of each label row
     const p1 = pages[0];
+
+    // 1. Surname  — label top=118.7 → data row same band
     txt(p1, pr.surname,    126, 119, {size:8, bold:true, maxW:300});
+    // 2. First Name — label top=134.6
     txt(p1, pr.firstName,  126, 135, {size:8, bold:true, maxW:300});
-    txt(p1, pr.nameExt,    433, 131, {size:7.5, maxW:124});
+    // Name Extension — sits on same row as First Name header at x=433
+    txt(p1, pr.nameExt,    433, 135, {size:7.5, maxW:120});
+    // Middle Name — label top=150.7
     txt(p1, pr.middleName, 126, 151, {size:8, bold:true, maxW:300});
-    txt(p1, pr.dob,        126, 165, {size:7.5, maxW:122});
+
+    // 3. Date of Birth — label top=163.0, data goes on same row
+    txt(p1, pr.dob,        126, 163, {size:7.5, maxW:122});
+    // 4. Place of Birth — label top=194.2
     txt(p1, pr.pob,        126, 195, {size:7.5, maxW:122});
 
-    // Sex checkboxes
-    if (pr.sex === 'Male')   txt(p1, '/', 132, 213, {size:8});
-    if (pr.sex === 'Female') txt(p1, '/', 177, 213, {size:8});
+    // Citizenship checkboxes — Filipino checkbox x≈370, top=170.7
+    if (!pr.dualCitizenship) txt(p1, '/', 369, 171, {size:9});
+    else                     txt(p1, '/', 425, 171, {size:9});
 
-    // Civil status
-    if (pr.civil === 'Single')    txt(p1, '/', 130, 228, {size:8});
-    if (pr.civil === 'Married')   txt(p1, '/', 175, 228, {size:8});
-    if (pr.civil === 'Widowed')   txt(p1, '/', 130, 238, {size:8});
-    if (pr.civil === 'Separated') txt(p1, '/', 175, 238, {size:8});
-    if (!['Single','Married','Widowed','Separated'].includes(pr.civil) && pr.civil)
+    // 5. Sex at Birth — label top=212.2; Male text at x=143, Female at x=218
+    if (pr.sex === 'Male')   txt(p1, '/', 131, 212, {size:9});
+    if (pr.sex === 'Female') txt(p1, '/', 206, 212, {size:9});
+
+    // 6. Civil Status — label top=229.7; Single x=143, Married x=218 top=226.9; Widowed x=143, Separated x=218 top=237.3
+    if (pr.civil === 'Single')    txt(p1, '/', 131, 227, {size:9});
+    if (pr.civil === 'Married')   txt(p1, '/', 206, 227, {size:9});
+    if (pr.civil === 'Widow/er')  txt(p1, '/', 131, 237, {size:9});
+    if (pr.civil === 'Widowed')   txt(p1, '/', 131, 237, {size:9});
+    if (pr.civil === 'Separated') txt(p1, '/', 206, 237, {size:9});
+    if (!['Single','Married','Widow/er','Widowed','Separated'].includes(pr.civil) && pr.civil)
       txt(p1, pr.civil, 165, 248, {size:7, maxW:70});
 
+    // 7. Height — label top=264.8
     txt(p1, pr.height,     126, 265, {size:7.5, maxW:122});
-    txt(p1, pr.weight,     126, 283, {size:7.5, maxW:122});
-    txt(p1, pr.blood,      126, 307, {size:7.5, maxW:122});
-    txt(p1, pr.umid,       126, 315, {size:7.5, maxW:122});
-    txt(p1, pr.pagibig,    126, 325, {size:7.5, maxW:122});
-    txt(p1, pr.philhealth, 126, 343, {size:7.5, maxW:122});
-    txt(p1, pr.philsys,    126, 373, {size:7.5, maxW:122});
-    txt(p1, pr.tin,        126, 391, {size:7.5, maxW:122});
-    txt(p1, pr.agencyNo,   126, 409, {size:7.5, maxW:122});
+    // 8. Weight — label top=281.6
+    txt(p1, pr.weight,     126, 282, {size:7.5, maxW:72});
+    // ZIP CODE for residential is on same row as weight: top=281.7
+    // (rendered below with address section)
 
-    // Citizenship
-    if (!pr.dualCitizenship) txt(p1, '/', 379, 171, {size:8});
-    else txt(p1, '/', 428, 171, {size:8});
+    // 9. Blood Type — label top=298.7
+    txt(p1, pr.blood,      126, 299, {size:7.5, maxW:122});
 
-    // Residential Address
-    txt(p1, pr.residHouseNo, 330, 237, {size:7, maxW:98});
-    txt(p1, pr.residStreet,  433, 237, {size:7, maxW:126});
-    txt(p1, pr.residSubdiv,  330, 254, {size:7, maxW:98});
-    txt(p1, pr.residBrgy,    433, 254, {size:7, maxW:126});
-    txt(p1, pr.residCity,    330, 272, {size:7, maxW:98});
-    txt(p1, pr.residProv,    433, 272, {size:7, maxW:126});
-    txt(p1, pr.residZip,     253, 283, {size:7, maxW:72});
+    // 10. UMID — label top=316.6
+    txt(p1, pr.umid,       126, 317, {size:7.5, maxW:122});
+    // 11. PAG-IBIG — label top=334.7
+    txt(p1, pr.pagibig,    126, 335, {size:7.5, maxW:122});
+    // 12. PhilHealth — label top=353.5
+    txt(p1, pr.philhealth, 126, 354, {size:7.5, maxW:122});
+    // 13. PhilSys — label top=371.5
+    txt(p1, pr.philsys,    126, 372, {size:7.5, maxW:122});
+    // 14. TIN — label top=389.0
+    txt(p1, pr.tin,        126, 389, {size:7.5, maxW:122});
+    // 15. Agency Employee No. — label top=407.5
+    txt(p1, pr.agencyNo,   126, 408, {size:7.5, maxW:122});
 
-    // Permanent Address
-    txt(p1, pr.permHouseNo, 330, 306, {size:7, maxW:98});
-    txt(p1, pr.permStreet,  433, 306, {size:7, maxW:126});
-    txt(p1, pr.permSubdiv,  330, 324, {size:7, maxW:98});
-    txt(p1, pr.permBrgy,    433, 324, {size:7, maxW:126});
-    txt(p1, pr.permCity,    330, 342, {size:7, maxW:98});
-    txt(p1, pr.permProv,    433, 342, {size:7, maxW:126});
-    txt(p1, pr.permZip,     253, 354, {size:7, maxW:72});
+    // 17. Residential Address
+    // House/Block/Lot No. — header top=235.4, data row under it ≈248
+    txt(p1, pr.residHouseNo, 330, 243, {size:7, maxW:100});
+    txt(p1, pr.residStreet,  435, 243, {size:7, maxW:120});
+    // Subdivision/Village — header top=252.8
+    txt(p1, pr.residSubdiv,  330, 261, {size:7, maxW:100});
+    txt(p1, pr.residBrgy,    435, 261, {size:7, maxW:120});
+    // City/Municipality — header top=270.4
+    txt(p1, pr.residCity,    330, 278, {size:7, maxW:100});
+    txt(p1, pr.residProv,    435, 278, {size:7, maxW:120});
+    // ZIP CODE — label top=281.7
+    txt(p1, pr.residZip,     254, 282, {size:7, maxW:70});
 
-    txt(p1, pr.telNo,    330, 373, {size:7.5, maxW:228});
-    txt(p1, pr.mobileNo, 330, 391, {size:7.5, maxW:228});
-    txt(p1, pr.email,    330, 409, {size:7.5, maxW:228});
+    // 18. Permanent Address — header top=296.0
+    // House/Block/Lot No. header top=304.4
+    txt(p1, pr.permHouseNo, 330, 312, {size:7, maxW:100});
+    txt(p1, pr.permStreet,  435, 312, {size:7, maxW:120});
+    // Subdivision/Village header top=322.3
+    txt(p1, pr.permSubdiv,  330, 330, {size:7, maxW:100});
+    txt(p1, pr.permBrgy,    435, 330, {size:7, maxW:120});
+    // City/Municipality header top=340.5
+    txt(p1, pr.permCity,    330, 348, {size:7, maxW:100});
+    txt(p1, pr.permProv,    435, 348, {size:7, maxW:120});
+    // ZIP CODE — label top=353.1
+    txt(p1, pr.permZip,     254, 354, {size:7, maxW:70});
 
-    // Family
-    txt(p1, fam.spouseSurname,    126, 437, {size:7.5, maxW:122});
-    txt(p1, fam.spouseExt,        253, 452, {size:7, maxW:74});
+    // 19-21 Telephone / Mobile / Email — labels top=371.5/389.5/407.5
+    txt(p1, pr.telNo,    330, 372, {size:7.5, maxW:228});
+    txt(p1, pr.mobileNo, 330, 390, {size:7.5, maxW:228});
+    txt(p1, pr.email,    330, 408, {size:7.5, maxW:228});
+
+    // ── Family Background ──
+    // 22. Spouse Surname — label top=436.1
+    txt(p1, fam.spouseSurname,    126, 436, {size:7.5, maxW:122});
+    // First Name — label top=451.4
     txt(p1, fam.spouseFirstName,  126, 452, {size:7.5, maxW:122});
+    // Name Extension — header top=447.6, same row as First Name
+    txt(p1, fam.spouseExt,        253, 452, {size:7, maxW:74});
+    // Middle Name — label top=466.6
     txt(p1, fam.spouseMiddleName, 126, 467, {size:7.5, maxW:122});
+    // Occupation — label top=481.9
     txt(p1, fam.spouseOccupation, 126, 482, {size:7.5, maxW:122});
-    txt(p1, fam.spouseEmployer,   126, 498, {size:7.5, maxW:122});
+    // Employer/Business Name — label top=497.1
+    txt(p1, fam.spouseEmployer,   126, 497, {size:7.5, maxW:122});
+    // Business Address — label top=512.3
     txt(p1, fam.spouseBusiness,   126, 513, {size:7.5, maxW:122});
+    // Telephone No. — label top=527.6
     txt(p1, fam.spouseTel,        126, 528, {size:7.5, maxW:122});
+
+    // 24. Father's Surname — label top=542.8
     txt(p1, fam.fatherSurname,    126, 543, {size:7.5, maxW:122});
-    txt(p1, fam.fatherExt,        253, 558, {size:7, maxW:74});
+    // First Name — label top=558.1
     txt(p1, fam.fatherFirstName,  126, 558, {size:7.5, maxW:122});
+    // Name Extension — header top=554.3
+    txt(p1, fam.fatherExt,        253, 558, {size:7, maxW:74});
+    // Middle Name — label top=573.3
     txt(p1, fam.fatherMiddleName, 126, 573, {size:7.5, maxW:122});
+
+    // 25. Mother's Maiden Name — Surname label top=603.8
     txt(p1, fam.motherSurname,    126, 604, {size:7.5, maxW:122});
+    // First Name — label top=619.0
     txt(p1, fam.motherFirstName,  126, 619, {size:7.5, maxW:122});
+    // Middle Name — label top=634.3
     txt(p1, fam.motherMiddleName, 126, 634, {size:7.5, maxW:122});
 
-    // Children (right column)
+    // 23. Children — header top=435.8; data starts same row, step ≈15.2 per child
     const children = fam.children || [];
     for (let i = 0; i < Math.min(children.length, 12); i++) {
-      const ry = 437 + (i * 15.5);
-      txt(p1, children[i].name, 330, ry, {size:7, maxW:145});
-      txt(p1, children[i].dob,  480, ry, {size:7, maxW:78});
+      const ry = 436 + (i * 15.2);
+      txt(p1, children[i].name, 338, ry, {size:7, maxW:140});
+      txt(p1, children[i].dob,  487, ry, {size:7, maxW:70});
     }
 
-    // Education
+    // III. Educational Background — row tops from pdfplumber:
+    // ELEMENTARY top=698.6, SECONDARY=719.3, VOCATIONAL=736.1, COLLEGE=760.9, GRADUATE=781.5
+    // Data goes inside each band; offset data ~4pt below label top
     const eduLevels = ['Elementary','Secondary','Vocational','College','Graduate'];
-    const eduRows = [693, 714, 734, 755, 776];
+    const eduRows   = [699, 720, 737, 761, 782];
     for (let i = 0; i < 5; i++) {
       const ed = (e.education||[]).find(x => x.level && x.level.toLowerCase().startsWith(eduLevels[i].toLowerCase()));
       if (!ed) continue;
       const ry = eduRows[i];
       txt(p1, ed.school,   126, ry, {size:6.5, maxW:124});
-      txt(p1, ed.course,   253, ry, {size:6.5, maxW:112});
-      txt(p1, ed.from,     369, ry, {size:6.5, maxW:29});
-      txt(p1, ed.to,       401, ry, {size:6.5, maxW:29});
-      txt(p1, ed.units,    433, ry, {size:6.5, maxW:44});
-      txt(p1, ed.yearGrad, 480, ry, {size:6.5, maxW:35});
+      txt(p1, ed.course,   254, ry, {size:6.5, maxW:118});
+      txt(p1, ed.from,     372, ry, {size:6.5, maxW:28});
+      txt(p1, ed.to,       404, ry, {size:6.5, maxW:28});
+      txt(p1, ed.units,    434, ry, {size:6.5, maxW:44});
+      txt(p1, ed.yearGrad, 482, ry, {size:6.5, maxW:34});
       txt(p1, ed.honors,   519, ry, {size:6.5, maxW:40});
     }
 
     // ══ PAGE 2 — Eligibility + Work Experience ══
+    // Eligibility header row starts at top=29.5; first data row ≈57, each row ≈17.3
     const p2 = pages[1];
     const eligList = e.eligibility || [];
     for (let i = 0; i < Math.min(eligList.length, 9); i++) {
       const r = eligList[i];
-      const ry = 58 + (i * 17.3);
-      txt(p2, r.name,     76,  ry, {size:6.5, maxW:155});
-      txt(p2, r.rating,   240, ry, {size:6.5, maxW:50});
-      txt(p2, r.dateConf, 296, ry, {size:6.5, maxW:54});
-      txt(p2, r.place,    355, ry, {size:6.5, maxW:72});
-      txt(p2, r.licNo,    432, ry, {size:6.5, maxW:46});
-      txt(p2, r.licValid, 482, ry, {size:6.5, maxW:46});
+      const ry = 57 + (i * 17.3);
+      txt(p2, r.name,     76,  ry, {size:6.5, maxW:165});
+      txt(p2, r.rating,   249, ry, {size:6.5, maxW:50});
+      txt(p2, r.dateConf, 302, ry, {size:6.5, maxW:54});
+      txt(p2, r.place,    358, ry, {size:6.5, maxW:78});
+      txt(p2, r.licNo,    440, ry, {size:6.5, maxW:48});
+      txt(p2, r.licValid, 490, ry, {size:6.5, maxW:60});
     }
+    // Work Experience: header/From-To labels at top=265.6; first data row ≈275, step ≈19.3
     const workList = e.workExp || [];
     for (let i = 0; i < Math.min(workList.length, 28); i++) {
       const r = workList[i];
-      const ry = 274 + (i * 19.5);
-      txt(p2, r.from,         76,  ry, {size:6.5, maxW:38});
-      txt(p2, r.to,           118, ry, {size:6.5, maxW:38});
-      txt(p2, r.position,     161, ry, {size:6.5, maxW:73});
-      txt(p2, r.dept,         238, ry, {size:6.5, maxW:111});
-      txt(p2, r.salary||'',   354, ry, {size:6.5, maxW:73});
-      txt(p2, r.status,       431, ry, {size:6.5, maxW:46});
-      txt(p2, r.govtService,  481, ry, {size:6.5, maxW:46});
+      const ry = 275 + (i * 19.3);
+      txt(p2, r.from,        76,  ry, {size:6.5, maxW:42});
+      txt(p2, r.to,          122, ry, {size:6.5, maxW:42});
+      txt(p2, r.position,    169, ry, {size:6.5, maxW:130});
+      txt(p2, r.dept,        304, ry, {size:6.5, maxW:124});
+      txt(p2, r.status,      432, ry, {size:6.5, maxW:50});
+      txt(p2, r.govtService||'', 486, ry, {size:6.5, maxW:30});
     }
 
     // ══ PAGE 3 — Voluntary Work + Training + Other Info ══
+    // Voluntary Work: "From" label top=64.1; first data row ≈72, step ≈18
     const p3 = pages[2];
     const volList = e.voluntaryWork || [];
     for (let i = 0; i < Math.min(volList.length, 8); i++) {
       const r = volList[i];
-      const ry = 70 + (i * 18);
-      txt(p3, r.org||r.name||'', 36,  ry, {size:6.5, maxW:132});
-      txt(p3, r.from,            172, ry, {size:6.5, maxW:46});
-      txt(p3, r.to,              222, ry, {size:6.5, maxW:46});
-      txt(p3, r.hours,           350, ry, {size:6.5, maxW:38});
-      txt(p3, r.position,        436, ry, {size:6.5, maxW:130});
+      const ry = 72 + (i * 18);
+      txt(p3, r.org||r.name||'', 37,  ry, {size:6.5, maxW:235});
+      txt(p3, r.from,            283, ry, {size:6.5, maxW:40});
+      txt(p3, r.to,              327, ry, {size:6.5, maxW:40});
+      txt(p3, r.hours,           352, ry, {size:6.5, maxW:40});
+      txt(p3, r.position,        445, ry, {size:6.5, maxW:120});
     }
+    // Training/L&D: "From" label top=259.3; first data row ≈267, step ≈17.5
     for (let i = 0; i < Math.min(tr.length, 25); i++) {
       const t = tr[i];
-      const ry = 265 + (i * 17.5);
-      txt(p3, t.title,       36,  ry, {size:6.5, maxW:230});
-      txt(p3, t.from,        270, ry, {size:6.5, maxW:36});
-      txt(p3, t.to,          310, ry, {size:6.5, maxW:36});
-      txt(p3, t.hours,       350, ry, {size:6.5, maxW:38});
-      txt(p3, t.type,        392, ry, {size:6.5, maxW:40});
-      txt(p3, t.conductedBy, 436, ry, {size:6.5, maxW:130});
+      const ry = 267 + (i * 17.5);
+      txt(p3, t.title,       37,  ry, {size:6.5, maxW:240});
+      txt(p3, t.from,        283, ry, {size:6.5, maxW:40});
+      txt(p3, t.to,          327, ry, {size:6.5, maxW:40});
+      txt(p3, t.hours,       352, ry, {size:6.5, maxW:40});
+      txt(p3, t.type,        397, ry, {size:6.5, maxW:68});
+      txt(p3, t.conductedBy, 465, ry, {size:6.5, maxW:100});
     }
     const skillLines = ((e.otherInfo||{}).skills||'').split(',').map(s=>s.trim()).filter(Boolean);
     const distLines  = ((e.otherInfo||{}).distinctions||'').split(',').map(s=>s.trim()).filter(Boolean);
     const membLines  = ((e.otherInfo||{}).memberships||'').split(',').map(s=>s.trim()).filter(Boolean);
+    // VIII. Other Info section starts at top=641.9; data rows start at ≈673, step ≈17
     const maxRows = Math.max(5, skillLines.length, distLines.length, membLines.length);
     for (let i = 0; i < maxRows; i++) {
-      const ry = 678 + (i * 17);
-      if (skillLines[i]) txt(p3, skillLines[i], 36,  ry, {size:6.5, maxW:132});
-      if (distLines[i])  txt(p3, distLines[i],  172, ry, {size:6.5, maxW:260});
-      if (membLines[i])  txt(p3, membLines[i],  436, ry, {size:6.5, maxW:130});
+      const ry = 673 + (i * 17);
+      if (skillLines[i]) txt(p3, skillLines[i], 37,  ry, {size:6.5, maxW:215});
+      if (distLines[i])  txt(p3, distLines[i],  256, ry, {size:6.5, maxW:175});
+      if (membLines[i])  txt(p3, membLines[i],  437, ry, {size:6.5, maxW:125});
     }
 
     // ══ PAGE 4 — Declarations + References + Gov't ID ══
+    // YES x positions: q34a=392.9, q34b=392.9; NO: q34a=447.1, q34b=447.1
+    // Each question's YES/NO label top measured from pdfplumber
     const p4 = pages[3];
-    yn(p4, q.q34a,  381, 438, 66);
-    yn(p4, q.q34b,  381, 438, 80);
-    if (q.q34det)      txt(p4, q.q34det,     370, 100, {size:6.5, maxW:195});
-    yn(p4, q.q35a,  381, 438, 121);
-    if (q.q35aDet)     txt(p4, q.q35aDet,    370, 141, {size:6.5, maxW:195});
-    yn(p4, q.q35b,  381, 438, 165);
-    if (q.q35bDet)     txt(p4, q.q35bDet,    370, 185, {size:6.5, maxW:195});
-    if (q.q35bDate)    txt(p4, q.q35bDate,   439, 197, {size:6.5, maxW:90});
-    if (q.q35bStatus)  txt(p4, q.q35bStatus, 424, 208, {size:6.5, maxW:120});
-    yn(p4, q.q36,   381, 438, 219);
-    if (q.q36Det)      txt(p4, q.q36Det,     370, 238, {size:6.5, maxW:195});
-    yn(p4, q.q37,   381, 438, 262);
-    if (q.q37Det)      txt(p4, q.q37Det,     370, 279, {size:6.5, maxW:195});
-    yn(p4, q.q38a,  381, 438, 298);
-    if (q.q38aDet)     txt(p4, q.q38aDet,    370, 316, {size:6.5, maxW:195});
-    yn(p4, q.q38b,  381, 438, 324);
-    if (q.q38bDet)     txt(p4, q.q38bDet,    370, 344, {size:6.5, maxW:195});
-    yn(p4, q.q39,   381, 438, 355);
-    if (q.q39Det)      txt(p4, q.q39Det,     370, 373, {size:6.5, maxW:195});
-    yn(p4, q.q40a,  381, 449, 429);
-    if (q.q40aSpec)    txt(p4, q.q40aSpec,   370, 446, {size:6.5, maxW:195});
-    yn(p4, q.q40b,  381, 449, 451);
-    if (q.q40bId)      txt(p4, q.q40bId,     370, 468, {size:6.5, maxW:195});
-    yn(p4, q.q40c,  381, 449, 475);
-    if (q.q40cId)      txt(p4, q.q40cId,     370, 492, {size:6.5, maxW:195});
+    yn(p4, q.q34a,  381, 436, 65);   // "within the third degree?" YES top=65.8
+    yn(p4, q.q34b,  381, 436, 79);   // "within the fourth degree?" YES top=79.8
+    if (q.q34det) txt(p4, q.q34det, 378, 98, {size:6.5, maxW:185});
 
-    // References
+    yn(p4, q.q35a,  380, 437, 120);  // q35a YES top=120.8
+    if (q.q35aDet) txt(p4, q.q35aDet, 378, 139, {size:6.5, maxW:185});
+
+    yn(p4, q.q35b,  380, 440, 164);  // q35b YES top=164.7
+    if (q.q35bDet)    txt(p4, q.q35bDet,    378, 183, {size:6.5, maxW:185});
+    if (q.q35bDate)   txt(p4, q.q35bDate,   420, 195, {size:6.5, maxW:140});
+    if (q.q35bStatus) txt(p4, q.q35bStatus, 420, 207, {size:6.5, maxW:140});
+
+    yn(p4, q.q36,   379, 442, 219);  // q36 YES top=219.4
+
+    // q37-40 — measure remaining tops
+    yn(p4, q.q37,   379, 442, 261);
+    if (q.q37Det) txt(p4, q.q37Det, 378, 278, {size:6.5, maxW:185});
+
+    yn(p4, q.q38a,  379, 442, 298);
+    if (q.q38aDet) txt(p4, q.q38aDet, 378, 315, {size:6.5, maxW:185});
+    yn(p4, q.q38b,  379, 442, 323);
+    if (q.q38bDet) txt(p4, q.q38bDet, 378, 340, {size:6.5, maxW:185});
+
+    yn(p4, q.q39,   379, 442, 354);
+    if (q.q39Det) txt(p4, q.q39Det, 378, 371, {size:6.5, maxW:185});
+
+    yn(p4, q.q40a,  379, 452, 428);
+    if (q.q40aSpec) txt(p4, q.q40aSpec, 378, 445, {size:6.5, maxW:185});
+    yn(p4, q.q40b,  379, 452, 450);
+    if (q.q40bId)   txt(p4, q.q40bId,   378, 466, {size:6.5, maxW:185});
+    yn(p4, q.q40c,  379, 452, 473);
+    if (q.q40cId)   txt(p4, q.q40cId,   378, 490, {size:6.5, maxW:185});
+
+    // 41. References — NAME header top=518.6; first data row ≈530, step ≈18.9
     for (let i = 0; i < 3; i++) {
-      const ry = 533 + (i * 18.9);
-      txt(p4, refs[i].name,    40,  ry, {size:7, maxW:198});
-      txt(p4, refs[i].address, 244, ry, {size:7, maxW:120});
-      txt(p4, refs[i].contact, 369, ry, {size:7, maxW:58});
+      const ry = 530 + (i * 18.9);
+      txt(p4, refs[i].name,    40,  ry, {size:7, maxW:215});
+      txt(p4, refs[i].address, 258, ry, {size:7, maxW:105});
+      txt(p4, refs[i].contact, 367, ry, {size:7, maxW:82});
     }
 
-    // Gov't ID
-    txt(p4, e.govtId,           48, 677, {size:7, maxW:195});
-    txt(p4, e.govtIdNo,         48, 695, {size:7, maxW:195});
-    txt(p4, e.govtIdIssuance,   48, 730, {size:7, maxW:195});
-    txt(p4, e.dateAccomplished, 270, 730, {size:7, maxW:100});
+    // Gov't ID — label top=659.8/669.6; data rows just below
+    txt(p4, e.govtId,           48, 672, {size:7, maxW:195});
+    txt(p4, e.govtIdNo,         48, 689, {size:7, maxW:195});
+    txt(p4, e.govtIdIssuance,   48, 720, {size:7, maxW:195});
+    txt(p4, e.dateAccomplished, 260, 730, {size:7, maxW:100});
 
     // Download
     const filledBytes = await pdfDoc.save();
