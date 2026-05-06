@@ -219,9 +219,9 @@ const DUMMY_EMPLOYEE = {
     {name:'Career Service Professional', rating:'84.50', dateConf:'2013-08-18', place:'PRC Testing Center, Baguio City', licNo:'CSP-2013-08541', licValid:'N/A'}
   ],
   workExp:[
-    {from:'2019-06-15', to:'Present', position:'Administrative Officer II', dept:'Administrative Division, Baguio City Government', status:'Permanent', govtService:'Yes'},
-    {from:'2014-03-01', to:'2019-06-14', position:'Administrative Aide VI', dept:'Civil Registrar\'s Office, Baguio City', status:'Permanent', govtService:'Yes'},
-    {from:'2012-07-01', to:'2014-02-28', position:'Records Officer I', dept:'Department of Interior and Local Government – CAR', status:'Contractual', govtService:'Yes'}
+    {from:'2019-06-15', to:'Present', position:'Administrative Officer II', dept:'Administrative Division, Baguio City Government', status:'Permanent', govtService:'Y'},
+    {from:'2014-03-01', to:'2019-06-14', position:'Administrative Aide VI', dept:'Civil Registrar\'s Office, Baguio City', status:'Permanent', govtService:'Y'},
+    {from:'2012-07-01', to:'2014-02-28', position:'Records Officer I', dept:'Department of Interior and Local Government – CAR', status:'Contractual', govtService:'Y'}
   ],
   voluntaryWork:[
     {org:'Baguio City Red Cross Chapter', from:'2016-01-01', to:'2016-12-31', hours:'80', position:'Volunteer Coordinator'}
@@ -436,7 +436,7 @@ function viewPDS(id) {
       : '<p class="empty-note">No records.</p>')}
     ${sec('V. Work Experience', e.workExp.length ?
       tbl(['From','To','Position','Department/Agency','Status','Gov\'t'],
-        e.workExp.map(r=>`<tr><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="font-weight:500">${esc(r.position)}</td><td>${esc(r.dept)}</td><td>${esc(r.status)}</td><td>${esc(r.govtService)}</td></tr>`).join(''))
+        e.workExp.map(r=>`<tr><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="font-weight:500">${esc(r.position)}</td><td>${esc(r.dept)}</td><td>${esc(r.status)}</td><td>${r.govtService==='Y'||r.govtService==='Yes'?'Yes':'No'}</td></tr>`).join(''))
       : '<p class="empty-note">No records.</p>')}
     ${sec('VII. L&D / Training Programs', tr.length ?
       tbl(['Title','From','To','Hours','Type','Conducted By'],
@@ -493,7 +493,7 @@ function buildPDSForm() {
 function swTab(i) { collectForm(); activeTab = i; buildPDSForm(); }
 function inp(id, val, ph='', type='text') { return `<input type="${type}" id="${id}" value="${esc(val)}" placeholder="${ph}">`; }
 function sel(id, val, opts) { return `<select id="${id}"><option value="">—</option>${opts.map(o=>`<option${val===o?' selected':''}>${esc(o)}</option>`).join('')}</select>`; }
-function fld(lbl, content, cls='') { return `<div class="fld${cls?' '+cls:''}""><label>${lbl}</label>${content}</div>`; }
+function fld(lbl, content, cls='') { return `<div class="fld${cls?' '+cls:''}"><label>${lbl}</label>${content}</div>`; }
 
 function tabPersonal(p) {
   const pr = p.personal;
@@ -628,7 +628,7 @@ function tabElig(p) {
       ${fld('Date of Exam/Conferment', `<input type="date" id="el_dt_${i}" value="${esc(e.dateConf)}">`, 's2')}
       ${fld('Place of Exam/Conferment', `<input id="el_pl_${i}" value="${esc(e.place)}">`)}
       ${fld('License No.', `<input id="el_ln_${i}" value="${esc(e.licNo)}">`)}
-      ${fld('License Valid Until', `<input type="date" id="el_lv_${i}" value="${esc(e.licValid)}">`)}
+      ${fld('License Valid Until', `<input id="el_lv_${i}" value="${esc(e.licValid)}" placeholder="N/A or date">`)}
     </div></div>`).join('')}</div>
   <button class="add-btn" onclick="addElig()">+ Add Eligibility</button></div>`;
 }
@@ -691,22 +691,27 @@ function tabOther(p) {
 
 function tabDecl(p) {
   const q = p.questions;
-  function di(qk, lbl, detId) {
+  function di(qk, lbl, detId, extraFields) {
     const ch = q[qk];
     const det = detId && ch ? `<div class="decl-det"><input type="text" id="decl_${detId}" value="${esc(q[detId])}" placeholder="If YES, give details…"></div>` : '';
+    const extra = (extraFields && ch) ? extraFields : '';
     return `<div class="decl-item"><div class="decl-row">
       <div class="decl-radios">
         <label><input type="radio" name="dq_${qk}" value="y"${ch?' checked':''} onchange="setDecl('${qk}','${detId||''}',true)"> Yes</label>
         <label><input type="radio" name="dq_${qk}" value="n"${!ch?' checked':''} onchange="setDecl('${qk}','${detId||''}',false)"> No</label>
       </div>
       <div class="decl-text">${lbl}</div>
-    </div>${det}</div>`;
+    </div>${det}${extra}</div>`;
   }
   return `<div class="fsec"><div class="fsec-title">IX. Declarations (Questions 34–40)</div>
     ${di('q34a','<b>34a.</b> Are you related by consanguinity or affinity to the appointing or recommending authority, or to the chief of bureau or office or to the person who has immediate supervision over you in the Office, Bureau or Department where you will be appointed, <b>within the third degree?</b>','q34det')}
     ${di('q34b','<b>34b.</b> Within the <b>fourth degree</b> (for Local Government Unit - Career Employees)?',null)}
     ${di('q35a','<b>35a.</b> Have you ever been found guilty of any administrative offense?','q35aDet')}
-    ${di('q35b','<b>35b.</b> Have you been criminally charged before any court?','q35bDet')}
+    ${di('q35b','<b>35b.</b> Have you been criminally charged before any court?','q35bDet',
+      q.q35b ? `<div class="decl-det" style="display:flex;gap:8px">
+        <input type="text" id="decl_q35bDate" value="${esc(q.q35bDate)}" placeholder="Date Filed…" style="flex:1">
+        <input type="text" id="decl_q35bStatus" value="${esc(q.q35bStatus)}" placeholder="Status of Case/s…" style="flex:1">
+      </div>` : '')}
     ${di('q36','<b>36.</b> Have you ever been convicted of any crime or violation of any law, decree, ordinance or regulation by any court or tribunal?','q36Det')}
     ${di('q37','<b>37.</b> Have you ever been separated from the service in any of the following modes: resignation, retirement, dropped from the rolls, dismissal, termination, end of term, finished contract or phased out (abolition) in the public or private sector?','q37Det')}
     ${di('q38a','<b>38a.</b> Have you ever been a candidate in a national or local election held within the last year (except Barangay election)?','q38aDet')}
@@ -765,7 +770,7 @@ function collectForm() {
   p.workExp.forEach((e,i) => { if (document.getElementById(`we_fr_${i}`)) { e.from=gv(`we_fr_${i}`); e.to=gv(`we_to_${i}`); e.position=gv(`we_po_${i}`); e.dept=gv(`we_de_${i}`); e.status=gv(`we_st_${i}`); e.govtService=gv(`we_gv_${i}`); } });
   p.voluntaryWork.forEach((e,i) => { if (document.getElementById(`vl_or_${i}`)) { e.org=gv(`vl_or_${i}`); e.from=gv(`vl_fr_${i}`); e.to=gv(`vl_to_${i}`); e.hours=gv(`vl_hr_${i}`); e.position=gv(`vl_po_${i}`); } });
   if (document.getElementById('f_skills')) { p.otherInfo.skills=gv('f_skills'); p.otherInfo.distinctions=gv('f_dists'); p.otherInfo.memberships=gv('f_membs'); }
-  ['q34det','q35aDet','q35bDet','q36Det','q37Det','q38aDet','q38bDet','q39Det','q40aSpec','q40bId','q40cId'].forEach(k => { if (document.getElementById('decl_'+k)) p.questions[k] = gv('decl_'+k); });
+  ['q34det','q35aDet','q35bDet','q35bDate','q35bStatus','q36Det','q37Det','q38aDet','q38bDet','q39Det','q40aSpec','q40bId','q40cId'].forEach(k => { if (document.getElementById('decl_'+k)) p.questions[k] = gv('decl_'+k); });
   if (p.references) p.references.forEach((r,i) => { if (document.getElementById(`rf_nm_${i}`)) { r.name=gv(`rf_nm_${i}`); r.address=gv(`rf_ad_${i}`); r.contact=gv(`rf_ct_${i}`); } });
   if (document.getElementById('f_govtId')) { p.govtId=gv('f_govtId'); p.govtIdNo=gv('f_govtIdNo'); p.govtIdIssuance=gv('f_govtIss'); p.dateAccomplished=gv('f_dateAcc'); }
 }
@@ -890,13 +895,6 @@ function printReport() {
 // ══════════ MY PDS ══════════
 function renderMyPDS() {
   const content = document.getElementById('myPDSContent');
-  if (currentEmpId === 'NEW' || !employees.find(e => e.id === currentEmpId)) {
-    const emp = employees.find(e => e.id === currentEmpId);
-    if (!emp) {
-      content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`;
-      return;
-    }
-  }
   const emp = employees.find(e => e.id === currentEmpId);
   if (!emp) { content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`; return; }
   const tr = empTr(emp.id);
@@ -983,8 +981,10 @@ async function printPDS(id) {
     }
 
     function yn(page, val, yesX, noX, topY) {
-      if (val)  txt(page, '/', yesX, topY, {size:8});
-      else      txt(page, '/', noX,  topY, {size:8});
+      if (val === true || val === 'Y' || val === 'Yes' || val === 'y')
+        txt(page, '/', yesX, topY, {size:8});
+      else
+        txt(page, '/', noX,  topY, {size:8});
     }
 
     // ══ PAGE 1 ══
