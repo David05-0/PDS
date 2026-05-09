@@ -932,143 +932,194 @@ function openMyNew() { editingPDS = blankPDS(); navigate('pdsForm'); renderPDSFo
 function openMyEdit(id) { editingPDS = JSON.parse(JSON.stringify(employees.find(e=>e.id===id)||blankPDS())); navigate('pdsForm'); renderPDSForm(); }
 
 // ══════════ PRINT PDS — fills official CS Form 212 (Revised 2025) PDF ══════════
+
+// Helper: format a date string to dd/mm/yyyy for the PDF
+function fmtPDF(d) {
+  if (!d) return '';
+  try {
+    // Handle YYYY-MM-DD input
+    const parts = d.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return d;
+  } catch { return d; }
+}
+
+// Show a PDF preview modal before downloading
+function showPDFPreview(blobUrl, filename) {
+  // Remove any existing modal
+  const existing = document.getElementById('pdfPreviewModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'pdfPreviewModal';
+  modal.style.cssText = `
+    position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.65);
+    display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Sans',sans-serif;
+  `;
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:14px;width:min(96vw,860px);height:min(92vh,700px);
+                display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.4);">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;
+                  background:#0f2d5e;color:#fff;flex-shrink:0;">
+        <div>
+          <div style="font-size:15px;font-weight:700;">📄 PDS Preview — CS Form 212 (Revised 2025)</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px;">${filename}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <a href="${blobUrl}" download="${filename}"
+             style="padding:7px 16px;background:#1d56a0;color:#fff;border-radius:8px;
+                    font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:5px;">
+            ⬇ Download PDF
+          </a>
+          <button onclick="document.getElementById('pdfPreviewModal').remove();URL.revokeObjectURL('${blobUrl}')"
+                  style="padding:7px 14px;border-radius:8px;border:1.5px solid rgba(255,255,255,.35);
+                         background:transparent;color:#fff;cursor:pointer;font-size:12px;font-weight:600;
+                         font-family:'IBM Plex Sans',sans-serif;">
+            ✕ Close
+          </button>
+        </div>
+      </div>
+      <iframe src="${blobUrl}" style="flex:1;border:none;background:#525659;"></iframe>
+    </div>`;
+  document.body.appendChild(modal);
+
+  // Close on backdrop click
+  modal.addEventListener('click', ev => {
+    if (ev.target === modal) {
+      modal.remove();
+      URL.revokeObjectURL(blobUrl);
+    }
+  });
+}
+
 async function printPDS(id) {
   const e = employees.find(x => x.id === id);
   if (!e) { toast('Employee not found.', 'error'); return; }
   toast('Generating PDF…', 'success');
 
-  const tr = empTr(id);
-  const pr = e.personal;
+  const tr  = empTr(id);
+  const pr  = e.personal;
   const fam = e.family;
-  const q = e.questions || {};
+  const q   = e.questions || {};
   const refs = (e.references && e.references.length >= 3)
     ? e.references
     : [{name:'',address:'',contact:''},{name:'',address:'',contact:''},{name:'',address:'',contact:''}];
 
   try {
     const { PDFDocument, rgb, StandardFonts } = await import('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm');
+
+    // Try to fetch the template; fall back to a blank document message
     const templateRes = await fetch('pds_template.pdf');
-    if (!templateRes.ok) throw new Error('Could not load pds_template.pdf');
+    if (!templateRes.ok) throw new Error('Could not load pds_template.pdf — make sure it is in the same folder as index.html');
     const templateBytes = await templateRes.arrayBuffer();
+
     const pdfDoc  = await PDFDocument.load(templateBytes);
     const font     = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const pages = pdfDoc.getPages();
-    const PH = 841.92; // A4 height in pts
+    const pages    = pdfDoc.getPages();
+    const PH       = 841.92; // A4 height in points (pdf-lib uses points, 1pt = 1/72 inch)
 
-    // ── Core draw helpers ──────────────────────────────────────────────────────
-    // topY = pdfplumber "top" coordinate (measured from top of page)
-    // pdf-lib y=0 is at BOTTOM, so: lib_y = PH - topY - fontSize
+    // ── Core text helper ──────────────────────────────────────────────────────
+    // topY = coordinate measured from TOP of page (as pdfplumber reports)
+    // pdf-lib y=0 is BOTTOM, so: lib_y = PH - topY - fontSize
     function txt(page, text, x, topY, opts = {}) {
       if (text === null || text === undefined || text === '') return;
       const str   = String(text).trim();
       if (!str) return;
       const size  = opts.size  || 7.5;
       const maxW  = opts.maxW  || null;
-      const lineH = opts.lineH || (size * 1.25);
+      const lineH = opts.lineH || (size * 1.3);
       const f     = opts.bold  ? fontBold : font;
+      const clr   = rgb(0, 0, 0);
 
-      if (maxW) {
-        // Word-wrap: split into lines that fit within maxW
-        const words = str.split(/\s+/);
-        let lines = [], cur = '';
-        for (const w of words) {
-          const test = cur ? cur + ' ' + w : w;
-          if (f.widthOfTextAtSize(test, size) <= maxW) {
-            cur = test;
+      if (!maxW) {
+        // Auto-shrink if text is too wide (single-line no-wrap mode)
+        const tw = f.widthOfTextAtSize(str, size);
+        const actualSize = size; // keep at specified size when maxW not given
+        page.drawText(str, { x, y: PH - topY - actualSize, size: actualSize, font: f, color: clr });
+        return;
+      }
+
+      // Word-wrap within maxW
+      const words = str.split(/\s+/);
+      let lines = [], cur = '';
+      for (const w of words) {
+        const test = cur ? cur + ' ' + w : w;
+        if (f.widthOfTextAtSize(test, size) <= maxW) {
+          cur = test;
+        } else {
+          if (cur) lines.push(cur);
+          if (f.widthOfTextAtSize(w, size) > maxW) {
+            // Single word too wide — shrink it
+            const fs = Math.max(4.5, size * (maxW / f.widthOfTextAtSize(w, size)));
+            page.drawText(w, { x, y: PH - (topY + lines.length * lineH) - fs, size: fs, font: f, color: clr });
+            lines.push('');
+            cur = '';
           } else {
-            if (cur) lines.push(cur);
-            // If single word still too wide, shrink font for that word
-            if (f.widthOfTextAtSize(w, size) > maxW) {
-              const fs = Math.max(4.5, size * (maxW / f.widthOfTextAtSize(w, size)));
-              page.drawText(w, { x, y: PH - (topY + lines.length * lineH) - fs, size: fs, font: f, color: rgb(0,0,0) });
-              lines.push(''); // placeholder so next word goes to new line
-              cur = '';
-            } else {
-              cur = w;
-            }
+            cur = w;
           }
         }
-        if (cur) lines.push(cur);
-        lines.forEach((line, li) => {
-          if (!line) return;
-          page.drawText(line, {
-            x, y: PH - (topY + li * lineH) - size,
-            size, font: f, color: rgb(0,0,0)
-          });
-        });
-      } else {
-        page.drawText(str, { x, y: PH - topY - size, size, font: f, color: rgb(0,0,0) });
       }
+      if (cur) lines.push(cur);
+      lines.forEach((line, li) => {
+        if (!line) return;
+        page.drawText(line, { x, y: PH - (topY + li * lineH) - size, size, font: f, color: clr });
+      });
     }
 
-    // Check mark — draws 'X' inside a checkbox at the given label's topY
-    // xPos = left edge of the checkbox square (label x0 - ~8)
-    function chk(page, val, yesX, noX, topY) {
-      const mark = 'X';
-      const sz   = 7;
-      if (val === true || val === 'Y' || val === 'Yes' || val === 'y') {
-        page.drawText(mark, { x: yesX, y: PH - topY - sz, size: sz, font: fontBold, color: rgb(0,0,0) });
-      } else {
-        page.drawText(mark, { x: noX,  y: PH - topY - sz, size: sz, font: fontBold, color: rgb(0,0,0) });
-      }
+    // ── Checkbox helper ────────────────────────────────────────────────────────
+    // Draws 'X' in the YES or NO checkbox based on val
+    function chk(page, val, yesX, noX, topY, sz = 7) {
+      const isYes = (val === true || val === 'Y' || val === 'Yes' || val === 'y');
+      page.drawText('X', {
+        x: isYes ? yesX : noX,
+        y: PH - topY - sz,
+        size: sz, font: fontBold, color: rgb(0, 0, 0)
+      });
     }
 
-    // ══ PAGE 1 ══════════════════════════════════════════════════════════════════
-    // Column layout measured via pdfplumber:
-    //   Left data col:  x0=125.9  (fields 1-15)
-    //   Name Ext col:   x0=432.0
-    //   Right section:  x0=329.0  (address, family right side)
-    //   Right far:      x0=432.0  for street/brgy/province
+    // ══════════════════════════════════════════════════════════════════════════
+    // PAGE 1 — Personal Information + Family Background + Education
+    // ══════════════════════════════════════════════════════════════════════════
     const p1 = pages[0];
 
-    // ── I. Personal Information ────────────────────────────────────────────────
-    // Surname  cell: top=113.2 bot=129.1  → data at ~120
-    txt(p1, pr.surname,    127, 118, {size:8, bold:true, maxW:290});
-    // First Name cell: top=129.5 bot=145.4 → data at ~133
-    txt(p1, pr.firstName,  127, 132, {size:8, bold:true, maxW:285});
-    // Name Extension: right box top=129.5 bot=145.4, x0=432
+    // ── I. Personal Information ──────────────────────────────────────────────
+    txt(p1, pr.surname,    127, 118, {size:8,   bold:true, maxW:290});
+    txt(p1, pr.firstName,  127, 132, {size:8,   bold:true, maxW:285});
     txt(p1, pr.nameExt,    434, 132, {size:7.5, maxW:118});
-    // Middle Name: top=145.8 bot=160.8 → data at ~149
-    txt(p1, pr.middleName, 127, 148, {size:8, bold:true, maxW:290});
+    txt(p1, pr.middleName, 127, 148, {size:8,   bold:true, maxW:290});
 
-    // Date of Birth: left sub-cell top=161.5 bot=187.9, x0=125.9 x1=252.2
-    txt(p1, pr.dob,  127, 169, {size:7.5, maxW:118});
-    // Place of Birth: top=187.8 bot=205.9
-    txt(p1, pr.pob,  127, 193, {size:7.5, maxW:118, lineH:8});
+    // Date of Birth (formatted dd/mm/yyyy per CSC standard)
+    txt(p1, fmtPDF(pr.dob), 127, 169, {size:7.5, maxW:118});
+    txt(p1, pr.pob,          127, 193, {size:7,   maxW:118, lineH:8});
 
-    // Sex at Birth: top=205.8 bot=223.9
-    // Male checkbox label x0=143.5 → checkbox square ≈ x=131
-    // Female checkbox label x0=218.2 → checkbox square ≈ x=206
+    // Sex — tick checkbox
     if (pr.sex === 'Male')   txt(p1, 'X', 131, 212, {size:7, bold:true});
     if (pr.sex === 'Female') txt(p1, 'X', 206, 212, {size:7, bold:true});
 
-    // Civil Status: top=223.8 bot=241.8 (Single/Married row)
-    //              top=241.7 bot=259.2 (Widowed/Separated row)
-    // Single x0=143.5→chk x=130; Married x0=218.2→chk x=206
-    if (pr.civil === 'Single')            txt(p1, 'X', 130, 229, {size:7, bold:true});
-    if (pr.civil === 'Married')           txt(p1, 'X', 206, 229, {size:7, bold:true});
-    if (pr.civil === 'Widow/er' || pr.civil === 'Widowed')
-                                          txt(p1, 'X', 130, 244, {size:7, bold:true});
-    if (pr.civil === 'Separated')         txt(p1, 'X', 206, 244, {size:7, bold:true});
+    // Civil Status — tick checkbox
+    if (pr.civil === 'Single')                               txt(p1, 'X', 130, 229, {size:7, bold:true});
+    if (pr.civil === 'Married')                              txt(p1, 'X', 206, 229, {size:7, bold:true});
+    if (pr.civil === 'Widow/er' || pr.civil === 'Widowed')  txt(p1, 'X', 130, 244, {size:7, bold:true});
+    if (pr.civil === 'Separated')                            txt(p1, 'X', 206, 244, {size:7, bold:true});
     if (!['Single','Married','Widow/er','Widowed','Separated'].includes(pr.civil) && pr.civil)
       txt(p1, pr.civil, 155, 252, {size:6.5, maxW:80});
 
-    // Citizenship: Filipino chk label x0=388.6→chk x=375; Dual x0=437→chk x=424
-    // row top=161.5 bot=187.9 → data at ~172
+    // Citizenship — tick checkbox
     if (!pr.dualCitizenship) txt(p1, 'X', 375, 172, {size:7, bold:true});
-    else                     txt(p1, 'X', 424, 172, {size:7, bold:true});
+    else {
+      txt(p1, 'X', 424, 172, {size:7, bold:true});
+      if (pr.dualCountry) txt(p1, pr.dualCountry, 440, 186, {size:6.5, maxW:110});
+    }
 
-    // Height: top=259.1 bot=276.6
+    // Physical data
     txt(p1, pr.height,     127, 263, {size:7.5, maxW:118});
-    // Weight: top=276.5 bot=310.8 (tall cell, weight + zip share left)
     txt(p1, pr.weight,     127, 281, {size:7.5, maxW:118});
-    // Blood Type: top=310.7 bot=328.7
     txt(p1, pr.blood,      127, 315, {size:7.5, maxW:118});
-    // UMID: same row range as blood type right side? No — separate rows
-    // From rects: Blood=310.7-328.7, UMID=? Let's use label tops:
-    // 10.UMID top=316.6, 11.PAG-IBIG top=334.7, 12.PHILHEALTH top=353.5
-    // 13.PhilSys top=371.5, 14.TIN top=389.0, 15.AGENCY top=407.5
+
+    // Government IDs
     txt(p1, pr.umid,       127, 321, {size:7.5, maxW:118});
     txt(p1, pr.pagibig,    127, 339, {size:7.5, maxW:118});
     txt(p1, pr.philhealth, 127, 357, {size:7.5, maxW:118});
@@ -1076,97 +1127,61 @@ async function printPDS(id) {
     txt(p1, pr.tin,        127, 392, {size:7.5, maxW:118});
     txt(p1, pr.agencyNo,   127, 410, {size:7.5, maxW:118});
 
-    // ── 17. Residential Address ────────────────────────────────────────────────
-    // Column edges (from pdfplumber vertical edges):
-    //   x=329 (left of right section), x=432 (street/brgy/prov start)
-    // Row headers (from pdfplumber words):
-    //   House/Block/Lot header top=235.4 → data row top=241.8 bot~252.6 → data ~244
-    //   Subdiv/Village header top=252.8  → data ~258-270 → data ~261
-    //   City/Muni header top=270.4       → data ~276-281 → data ~272
-    //   ZIP CODE label top=281.7         → data same row ~282
-
-    // House/Block row (top=235.2 bot=241.8 is the label band; data below =241.7 bot=259.2)
+    // ── 17. Residential Address ──────────────────────────────────────────────
     txt(p1, pr.residHouseNo, 330, 244, {size:7, maxW:96});
     txt(p1, pr.residStreet,  434, 244, {size:7, maxW:122});
-    // Subdiv row data: top=252.6-259.2 Barangay sub-band
     txt(p1, pr.residSubdiv,  330, 259, {size:7, maxW:96});
     txt(p1, pr.residBrgy,    434, 259, {size:7, maxW:122});
-    // City/Muni row data: top=270.5-276.6
     txt(p1, pr.residCity,    330, 272, {size:7, maxW:96});
     txt(p1, pr.residProv,    434, 272, {size:7, maxW:122});
-    // ZIP CODE: same left sub-cell as weight section, top=281.7
     txt(p1, pr.residZip,     253, 281, {size:7, maxW:70});
 
-    // ── 18. Permanent Address ──────────────────────────────────────────────────
-    // House/Block label top=304.4 → data below top=310.7
+    // ── 18. Permanent Address ────────────────────────────────────────────────
     txt(p1, pr.permHouseNo, 330, 311, {size:7, maxW:96});
     txt(p1, pr.permStreet,  434, 311, {size:7, maxW:122});
-    // Subdiv label top=322.1 → data ~329
     txt(p1, pr.permSubdiv,  330, 328, {size:7, maxW:96});
     txt(p1, pr.permBrgy,    434, 328, {size:7, maxW:122});
-    // City label top=347.0 → data ~348
     txt(p1, pr.permCity,    330, 349, {size:7, maxW:96});
     txt(p1, pr.permProv,    434, 349, {size:7, maxW:122});
-    // ZIP CODE label top=353.1 → data ~354
     txt(p1, pr.permZip,     253, 354, {size:7, maxW:70});
 
-    // 19-21 Telephone / Mobile / Email — label tops 371.5 / 389.5 / 407.5
+    // ── 19-21 Contact Info ───────────────────────────────────────────────────
     txt(p1, pr.telNo,    330, 374, {size:7.5, maxW:224});
     txt(p1, pr.mobileNo, 330, 392, {size:7.5, maxW:224});
     txt(p1, pr.email,    330, 410, {size:7.5, maxW:224});
 
-    // ── II. Family Background ──────────────────────────────────────────────────
-    // Cell tops from rects: 431.0-446.4 (Spouse surname row)
+    // ── II. Family Background ────────────────────────────────────────────────
+    // 22. Spouse
     txt(p1, fam.spouseSurname,    127, 435, {size:7.5, maxW:118});
-    // 446.3-461.6 (First Name row)
     txt(p1, fam.spouseFirstName,  127, 450, {size:7.5, maxW:118});
     txt(p1, fam.spouseExt,        253, 450, {size:7,   maxW:70});
-    // 461.6-... (Middle Name row — not in rects above; label top=466.6)
     txt(p1, fam.spouseMiddleName, 127, 465, {size:7.5, maxW:118});
-    // Occupation label top=481.9
-    txt(p1, fam.spouseOccupation, 127, 484, {size:7.5, maxW:118});
-    // Employer label top=497.1
-    txt(p1, fam.spouseEmployer,   127, 499, {size:7.5, maxW:118, lineH:8});
-    // Business Address label top=512.3
-    txt(p1, fam.spouseBusiness,   127, 514, {size:7.5, maxW:118, lineH:8});
-    // Tel label top=527.6
+    txt(p1, fam.spouseOccupation, 127, 484, {size:7,   maxW:118, lineH:8});
+    txt(p1, fam.spouseEmployer,   127, 499, {size:7,   maxW:118, lineH:8});
+    txt(p1, fam.spouseBusiness,   127, 514, {size:7,   maxW:118, lineH:8});
     txt(p1, fam.spouseTel,        127, 530, {size:7.5, maxW:118});
 
-    // Father surname label top=542.8; rect top=? — use label
+    // 24. Father
     txt(p1, fam.fatherSurname,    127, 546, {size:7.5, maxW:118});
-    // First Name label top=558.1; rect 553.0-568.3
     txt(p1, fam.fatherFirstName,  127, 561, {size:7.5, maxW:118});
     txt(p1, fam.fatherExt,        253, 561, {size:7,   maxW:70});
-    // Middle Name label top=573.3; rect 568.2-583.6
     txt(p1, fam.fatherMiddleName, 127, 576, {size:7.5, maxW:118});
 
-    // Mother — Surname label top=603.8; rect 598.7-629.3 (tall merged)
+    // 25. Mother
     txt(p1, fam.motherSurname,    127, 605, {size:7.5, maxW:118});
-    // First Name label top=619.0; rect 629.2-644.5
     txt(p1, fam.motherFirstName,  127, 620, {size:7.5, maxW:118});
-    // Middle Name label top=634.3
     txt(p1, fam.motherMiddleName, 127, 637, {size:7.5, maxW:118});
 
-    // 23. Children — right column x0=329, DOB x0≈487
-    // Header row top=431.0; each child row height ≈15.3
+    // 23. Children — right column
     const children = fam.children || [];
     for (let i = 0; i < Math.min(children.length, 12); i++) {
       const ry = 435 + (i * 15.3);
-      txt(p1, children[i].name, 330, ry, {size:6.5, maxW:148});
-      txt(p1, children[i].dob,  482, ry, {size:6.5, maxW:74});
+      txt(p1, children[i].name,           330, ry, {size:6.5, maxW:148});
+      txt(p1, fmtPDF(children[i].dob),    482, ry, {size:6.5, maxW:74});
     }
 
-    // ── III. Educational Background ────────────────────────────────────────────
-    // Section rect top=655.8 bot=690.7 (headers)
-    // Row label tops: ELEMENTARY=698.6, SECONDARY=719.3, VOCATIONAL=736.1
-    //                 COLLEGE=760.9, GRADUATE=781.5
-    // Column x edges (from pdfplumber words in header):
-    //   School name: x=126 → x1≈253
-    //   Course/Degree: x=253 → x1≈368 (approx, word BASIC starts 265)
-    //   Period From: x≈372, To: x≈404
-    //   Highest Units: x≈434
-    //   Year Grad: x≈482
-    //   Honors: x≈519
+    // ── III. Educational Background ──────────────────────────────────────────
+    // Row tops per level
     const eduLevels = ['Elementary','Secondary','Vocational','College','Graduate'];
     const eduTops   = [700, 721, 739, 762, 783];
     for (let i = 0; i < 5; i++) {
@@ -1182,96 +1197,88 @@ async function printPDS(id) {
       txt(p1, ed.honors,   520, ry, {size:6.5, maxW:40, lineH:7});
     }
 
-    // ══ PAGE 2 — Eligibility + Work Experience ══════════════════════════════════
-    // Eligibility column x edges: 75.6 | 238.0 | 294.1 | 353.4 | 430.9 | 480.7 | 531.0
-    // Header tops from words: main row top≈29.5, data rows start ≈57, step ≈17.3
+    // ══════════════════════════════════════════════════════════════════════════
+    // PAGE 2 — Civil Service Eligibility + Work Experience
+    // ══════════════════════════════════════════════════════════════════════════
     const p2 = pages[1];
+
+    // ── IV. Civil Service Eligibility ────────────────────────────────────────
     const eligList = e.eligibility || [];
     for (let i = 0; i < Math.min(eligList.length, 9); i++) {
       const r  = eligList[i];
       const ry = 57 + (i * 17.3);
-      txt(p2, r.name,     77,  ry, {size:6.5, maxW:156, lineH:7.5});
-      txt(p2, r.rating,   239, ry, {size:6.5, maxW:50});
-      txt(p2, r.dateConf, 295, ry, {size:6.5, maxW:54});
-      txt(p2, r.place,    354, ry, {size:6.5, maxW:72,  lineH:7.5});
-      txt(p2, r.licNo,    432, ry, {size:6.5, maxW:44});
-      txt(p2, r.licValid, 482, ry, {size:6.5, maxW:44});
+      txt(p2, r.name,              77,  ry, {size:6.5, maxW:156, lineH:7.5});
+      txt(p2, r.rating,            239, ry, {size:6.5, maxW:50});
+      txt(p2, fmtPDF(r.dateConf),  295, ry, {size:6.5, maxW:54});
+      txt(p2, r.place,             354, ry, {size:6.5, maxW:72, lineH:7.5});
+      txt(p2, r.licNo,             432, ry, {size:6.5, maxW:44});
+      txt(p2, r.licValid === 'N/A' ? 'N/A' : fmtPDF(r.licValid), 482, ry, {size:6.5, maxW:44});
     }
 
-    // Work Experience column x edges: 75.6 | 117.4 | 160.3 | 294.1 | 430.9 | 480.7 | 531.0
-    // "From" label top=265.6 → first data row ≈275, step ≈19.3
+    // ── V. Work Experience ───────────────────────────────────────────────────
     const workList = e.workExp || [];
     for (let i = 0; i < Math.min(workList.length, 28); i++) {
       const r  = workList[i];
       const ry = 275 + (i * 19.3);
-      txt(p2, r.from,     77,  ry, {size:6.5, maxW:37});
-      txt(p2, r.to,       118, ry, {size:6.5, maxW:38});
+      txt(p2, fmtPDF(r.from) || r.from, 77,  ry, {size:6.5, maxW:37});
+      txt(p2, r.to === 'Present' ? 'Present' : fmtPDF(r.to) || r.to, 118, ry, {size:6.5, maxW:38});
       txt(p2, r.position, 161, ry, {size:6.5, maxW:128, lineH:7.5});
       txt(p2, r.dept,     295, ry, {size:6.5, maxW:130, lineH:7.5});
       txt(p2, r.status,   432, ry, {size:6.5, maxW:44,  lineH:7.5});
-      // Gov't Service — normalise Y/N display
-      const gs = (r.govtService==='Yes'||r.govtService==='Y') ? 'Y' : (r.govtService==='No'||r.govtService==='N') ? 'N' : (r.govtService||'');
-      txt(p2, gs,         481, ry, {size:6.5, maxW:44});
+      const gs = (r.govtService === 'Yes' || r.govtService === 'Y') ? 'Y'
+               : (r.govtService === 'No'  || r.govtService === 'N') ? 'N'
+               : (r.govtService || '');
+      txt(p2, gs, 481, ry, {size:6.5, maxW:44});
     }
 
-    // ══ PAGE 3 — Voluntary Work + Training + Other Info ══════════════════════════
-    // Voluntary Work column x edges: 36.5 | 267.2 | 308.2 | 349.1 | 390.0 | 569.8
-    // "From" label top=64.1 → first data row ≈72, step ≈18
+    // ══════════════════════════════════════════════════════════════════════════
+    // PAGE 3 — Voluntary Work + Training/L&D + Other Information
+    // ══════════════════════════════════════════════════════════════════════════
     const p3 = pages[2];
+
+    // ── VI. Voluntary Work ───────────────────────────────────────────────────
     const volList = e.voluntaryWork || [];
     for (let i = 0; i < Math.min(volList.length, 8); i++) {
       const r  = volList[i];
       const ry = 72 + (i * 18);
-      txt(p3, r.org||r.name||'', 37,  ry, {size:6.5, maxW:225, lineH:7.5});
-      txt(p3, r.from,            268, ry, {size:6.5, maxW:36});
-      txt(p3, r.to,              309, ry, {size:6.5, maxW:36});
-      txt(p3, r.hours,           350, ry, {size:6.5, maxW:36});
-      txt(p3, r.position,        391, ry, {size:6.5, maxW:174, lineH:7.5});
+      txt(p3, r.org || r.name || '',       37,  ry, {size:6.5, maxW:225, lineH:7.5});
+      txt(p3, fmtPDF(r.from) || r.from,   268, ry, {size:6.5, maxW:36});
+      txt(p3, fmtPDF(r.to)   || r.to,     309, ry, {size:6.5, maxW:36});
+      txt(p3, String(r.hours || ''),       350, ry, {size:6.5, maxW:36});
+      txt(p3, r.position || '',            391, ry, {size:6.5, maxW:174, lineH:7.5});
     }
 
-    // Training/L&D column x edges: 36.5 | 267.2 | 308.2 | 349.1 | 390.0 | 434.9 | 569.8
-    // "From" label top=259.3 → first data row ≈267, step ≈17.5
+    // ── VII. Training / L&D Interventions ────────────────────────────────────
     for (let i = 0; i < Math.min(tr.length, 25); i++) {
       const t  = tr[i];
       const ry = 267 + (i * 17.5);
-      txt(p3, t.title,       37,  ry, {size:6.5, maxW:225, lineH:7.5});
-      txt(p3, t.from,        268, ry, {size:6.5, maxW:36});
-      txt(p3, t.to,          309, ry, {size:6.5, maxW:36});
-      txt(p3, t.hours,       350, ry, {size:6.5, maxW:36});
-      txt(p3, t.type,        391, ry, {size:6.5, maxW:40,  lineH:7.5});
-      txt(p3, t.conductedBy, 436, ry, {size:6.5, maxW:128, lineH:7.5});
+      txt(p3, t.title,                     37,  ry, {size:6.5, maxW:225, lineH:7.5});
+      txt(p3, fmtPDF(t.from) || t.from,   268, ry, {size:6.5, maxW:36});
+      txt(p3, fmtPDF(t.to)   || t.to,     309, ry, {size:6.5, maxW:36});
+      txt(p3, String(t.hours || ''),       350, ry, {size:6.5, maxW:36});
+      txt(p3, t.type || '',                391, ry, {size:6.5, maxW:40, lineH:7.5});
+      txt(p3, t.conductedBy || '',         436, ry, {size:6.5, maxW:128, lineH:7.5});
     }
 
-    // VIII. Other Information — section top=641.9
-    // Column x edges (from words): Skills x=37 →~218; Distinctions x=256→~435; Memberships x=437→~570
-    // Data rows start at ≈674, step ≈17
-    const skillLines = ((e.otherInfo||{}).skills||'').split(',').map(s=>s.trim()).filter(Boolean);
-    const distLines  = ((e.otherInfo||{}).distinctions||'').split(',').map(s=>s.trim()).filter(Boolean);
-    const membLines  = ((e.otherInfo||{}).memberships||'').split(',').map(s=>s.trim()).filter(Boolean);
+    // ── VIII. Other Information ──────────────────────────────────────────────
+    // Split comma-separated entries into individual rows
+    const skillLines = ((e.otherInfo||{}).skills||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+    const distLines  = ((e.otherInfo||{}).distinctions||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+    const membLines  = ((e.otherInfo||{}).memberships||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
     const maxOtherRows = Math.max(5, skillLines.length, distLines.length, membLines.length);
     for (let i = 0; i < maxOtherRows; i++) {
       const ry = 674 + (i * 17);
-      if (skillLines[i]) txt(p3, skillLines[i], 37,  ry, {size:6.5, maxW:218});
-      if (distLines[i])  txt(p3, distLines[i],  256, ry, {size:6.5, maxW:176});
+      if (skillLines[i]) txt(p3, skillLines[i], 37,  ry, {size:6.5, maxW:214});
+      if (distLines[i])  txt(p3, distLines[i],  256, ry, {size:6.5, maxW:174});
       if (membLines[i])  txt(p3, membLines[i],  437, ry, {size:6.5, maxW:128});
     }
 
-    // ══ PAGE 4 — Declarations + References + Gov't ID ══════════════════════════
-    // YES/NO label positions (from pdfplumber):
-    //   q34a: YES x0=392.9 top=65.8  / NO x0=447.1 → chk offset ~-10 from label x0
-    //   q34b: YES x0=392.9 top=79.8  / NO x0=447.1
-    //   q35a: YES x0=391.6 top=120.8 / NO x0=448.4
-    //   q35b: YES x0=391.6 top=164.7 / NO x0=451.1
-    //   q36:  YES x0=390.8 top=219.4 / NO x0=453.8
-    //   q37:  YES x0=390.2 top=261.5 / NO x0=453.8
-    //   q38a: YES x0=391.6 top=297.6 / NO x0=458.4
-    //   q38b: YES x0=392.9 top=323.8 / NO x0=459.7
-    //   q39:  YES x0=391.6 top=355.2 / NO x0=458.4
-    //   q40a: YES x0=391.6 top=428.8 / NO x0=459.7
-    //   q40b: YES x0=391.6 top=450.6 / NO x0=459.7
-    //   q40c: YES x0=391.6 top=474.5 / NO x0=459.7
-    // We place 'X' 9pt BEFORE the label x (inside the checkbox square)
+    // ══════════════════════════════════════════════════════════════════════════
+    // PAGE 4 — Declarations + References + Gov't ID
+    // ══════════════════════════════════════════════════════════════════════════
     const p4 = pages[3];
+
+    // ── Declarations (Questions 34–40) ───────────────────────────────────────
     chk(p4, q.q34a, 382, 436, 65.8);
     chk(p4, q.q34b, 382, 436, 79.8);
     if (q.q34det)     txt(p4, q.q34det,     370, 99,  {size:6.5, maxW:192, lineH:7.5});
@@ -1284,10 +1291,10 @@ async function printPDS(id) {
     if (q.q35bDate)   txt(p4, q.q35bDate,   435, 196, {size:6.5, maxW:125});
     if (q.q35bStatus) txt(p4, q.q35bStatus, 420, 208, {size:6.5, maxW:140});
 
-    chk(p4, q.q36,  380, 442, 219.4);
+    chk(p4, q.q36, 380, 442, 219.4);
     if (q.q36Det)     txt(p4, q.q36Det,     370, 238, {size:6.5, maxW:192, lineH:7.5});
 
-    chk(p4, q.q37,  380, 442, 261.5);
+    chk(p4, q.q37, 380, 442, 261.5);
     if (q.q37Det)     txt(p4, q.q37Det,     370, 280, {size:6.5, maxW:192, lineH:7.5});
 
     chk(p4, q.q38a, 381, 447, 297.6);
@@ -1295,7 +1302,7 @@ async function printPDS(id) {
     chk(p4, q.q38b, 382, 448, 323.8);
     if (q.q38bDet)    txt(p4, q.q38bDet,    370, 342, {size:6.5, maxW:192, lineH:7.5});
 
-    chk(p4, q.q39,  381, 447, 355.2);
+    chk(p4, q.q39, 381, 447, 355.2);
     if (q.q39Det)     txt(p4, q.q39Det,     370, 373, {size:6.5, maxW:192, lineH:7.5});
 
     chk(p4, q.q40a, 381, 448, 428.8);
@@ -1305,8 +1312,7 @@ async function printPDS(id) {
     chk(p4, q.q40c, 381, 448, 474.5);
     if (q.q40cId)     txt(p4, q.q40cId,     370, 491, {size:6.5, maxW:192, lineH:7.5});
 
-    // 41. References — column x edges: 39.7 | 243.2 | 368.4 | 431.6
-    // Row tops: header top≈514-529; data rows top=529, 548.5, 568.1
+    // ── 41. References ───────────────────────────────────────────────────────
     for (let i = 0; i < 3; i++) {
       const ry = 531 + (i * 19.4);
       txt(p4, refs[i].name,    41,  ry, {size:7, maxW:196, lineH:8});
@@ -1314,25 +1320,21 @@ async function printPDS(id) {
       txt(p4, refs[i].contact, 369, ry, {size:7, maxW:58,  lineH:8});
     }
 
-    // 42. Gov't ID — Govt ID label top=659.8, PLEASE INDICATE top=669.6
-    // Govt ID field: x=46 → x1≈229 (left box)
-    // ID No field and Date/Place share left box
-    // Date Accomplished: right of signature box ≈ x=442 top≈730
+    // ── 42. Gov't ID + Date Accomplished ────────────────────────────────────
     txt(p4, e.govtId,           47, 673, {size:7, maxW:178});
     txt(p4, e.govtIdNo,         47, 691, {size:7, maxW:178});
     txt(p4, e.govtIdIssuance,   47, 723, {size:7, maxW:178});
-    txt(p4, e.dateAccomplished, 442, 723, {size:7, maxW:108});
+    txt(p4, e.dateAccomplished ? fmtPDF(e.dateAccomplished) : '', 442, 723, {size:7, maxW:108});
 
-    // ── Download ───────────────────────────────────────────────────────────────
+    // ── Generate blob + show preview ─────────────────────────────────────────
     const filledBytes = await pdfDoc.save();
-    const blob = new Blob([filledBytes], {type: 'application/pdf'});
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = `PDS_${(pr.surname||'').toUpperCase()}_${(pr.firstName||'').toUpperCase()}.pdf`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    toast('PDF downloaded! ✓', 'success');
+    const blob = new Blob([filledBytes], { type: 'application/pdf' });
+    const blobUrl  = URL.createObjectURL(blob);
+    const filename = `PDS_${(pr.surname||'').toUpperCase()}_${(pr.firstName||'').toUpperCase()}_CS212_2025.pdf`;
+
+    // Show inline preview modal
+    showPDFPreview(blobUrl, filename);
+    toast('PDF ready — preview opened! ✓', 'success');
 
   } catch(err) {
     console.error('PDF generation error:', err);
