@@ -411,7 +411,7 @@ function viewPDS(id) {
     <button class="btn btn-outline" onclick="editPDS('${id}')">✏ Edit</button>
     ${e.status==='pending' ? `<button class="btn btn-green" onclick="approvePDS('${id}');viewPDS('${id}')">✓ Approve</button><button class="btn btn-red" onclick="rejectPDS('${id}');viewPDS('${id}')">↩ Return</button>` : ''}`;
   const tr = empTr(id);
-  const ir = (lbl, val) => `<div class="iitem"><div class="lbl">${lbl}</div><div class="val">${esc(val)||'—'}</div></div>`;
+  const ir = (lbl, val) => `<div class="iitem"><div class="lbl">${lbl}</div><div class="val">${val ? esc(val) : '<span style="color:var(--gray-400);font-style:italic;font-weight:400">—</span>'}</div></div>`;
   const sec = (t, b) => `<div class="vsec"><div class="vsec-title">${t}</div>${b}</div>`;
   const tbl = (hs, rows) => `<table><thead><tr>${hs.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
   document.getElementById('pdsViewContent').innerHTML = `
@@ -902,7 +902,7 @@ function renderMyPDS() {
   const emp = employees.find(e => e.id === currentEmpId);
   if (!emp) { content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`; return; }
   const tr = empTr(emp.id);
-  const ir = (lbl, val) => `<div class="iitem"><div class="lbl">${lbl}</div><div class="val">${esc(val)||'—'}</div></div>`;
+  const ir = (lbl, val) => `<div class="iitem"><div class="lbl">${lbl}</div><div class="val">${val ? esc(val) : '<span style="color:var(--gray-400);font-style:italic;font-weight:400">—</span>'}</div></div>`;
   const sec = (t, b) => `<div class="vsec"><div class="vsec-title">${t}</div>${b}</div>`;
   const tbl = (hs, rows) => `<table><thead><tr>${hs.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
   content.innerHTML = `
