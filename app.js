@@ -101,7 +101,10 @@ function initApp() {
   role = currentUser.role;
   document.getElementById('adminNav').style.display = role === 'admin' ? 'block' : 'none';
   document.getElementById('empNav').style.display = role === 'employee' ? 'block' : 'none';
-  if (role === 'employee') currentEmpId = currentUser.empId || 'NEW';
+  if (role === 'employee') {
+    currentEmpId = currentUser.empId || 'NEW';
+    // If the empId from the user account isn't in employees yet, that's okay — renderMyPDS handles 'NEW'
+  }
   loadData();
   popEmpSels();
   document.getElementById('reportMonth').value = new Date().toISOString().slice(0,7);
@@ -775,8 +778,13 @@ function collectForm() {
 function cancelForm() { editingPDS = null; navigate(role === 'admin' ? 'employees' : 'myPDS'); }
 function saveDraft() {
   collectForm(); const p = editingPDS; p.updatedAt = new Date().toISOString().slice(0,10);
-  if (!p.id) { p.id = newEmpId(); employees.push(p); }
-  else { const i = employees.findIndex(e => e.id === p.id); if (i >= 0) employees[i] = p; }
+  if (!p.id) {
+    p.id = (currentUser && currentUser.empId && currentUser.empId !== 'NEW') ? currentUser.empId : newEmpId();
+    employees.push(p);
+  } else {
+    const i = employees.findIndex(e => e.id === p.id); if (i >= 0) employees[i] = p; else employees.push(p);
+  }
+  if (currentUser && role === 'employee') { currentUser.empId = p.id; currentEmpId = p.id; }
   saveData(); popEmpSels(); toast('Draft saved.'); navigate(role === 'admin' ? 'employees' : 'myPDS');
 }
 function adminSave() {
@@ -789,8 +797,16 @@ function submitPDS() {
   collectForm(); const p = editingPDS;
   if (!p.personal.surname || !p.personal.firstName) { toast('Please fill in at least Surname and First Name.', 'error'); return; }
   p.status = 'pending'; p.submittedAt = new Date().toISOString().slice(0,10); p.updatedAt = p.submittedAt;
-  if (!p.id) { p.id = newEmpId(); employees.push(p); }
-  else { const i = employees.findIndex(e => e.id === p.id); if (i >= 0) employees[i] = p; }
+  if (!p.id) {
+    // Try to use currentUser.empId if set, otherwise generate new
+    p.id = (currentUser && currentUser.empId && currentUser.empId !== 'NEW') ? currentUser.empId : newEmpId();
+    employees.push(p);
+  } else {
+    const i = employees.findIndex(e => e.id === p.id);
+    if (i >= 0) employees[i] = p; else employees.push(p);
+  }
+  // Keep currentEmpId in sync so My PDS renders after submit
+  if (currentUser) { currentUser.empId = p.id; currentEmpId = p.id; }
   saveData(); editingPDS = null; popEmpSels(); toast('PDS submitted to admin! ✓'); navigate('myPDS');
 }
 
@@ -892,46 +908,139 @@ function printReport() {
 // ══════════ MY PDS ══════════
 function renderMyPDS() {
   const content = document.getElementById('myPDSContent');
-  if (currentEmpId === 'NEW' || !employees.find(e => e.id === currentEmpId)) {
-    const emp = employees.find(e => e.id === currentEmpId);
-    if (!emp) {
-      content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`;
-      return;
-    }
-  }
   const emp = employees.find(e => e.id === currentEmpId);
-  if (!emp) { content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`; return; }
+  if (!emp) {
+    content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`;
+    return;
+  }
   const tr = empTr(emp.id);
-  const ir = (lbl, val) => `<div class="iitem"><div class="lbl">${lbl}</div><div class="val">${val ? esc(val) : '<span style="color:var(--gray-400);font-style:italic;font-weight:400">—</span>'}</div></div>`;
-  const sec = (t, b) => `<div class="vsec"><div class="vsec-title">${t}</div>${b}</div>`;
+  const ir = (lbl, val) => `<div class="iitem"><div class="lbl">${lbl}</div><div class="val">${val ? esc(String(val)) : '<span style="color:var(--gray-400);font-style:italic;font-weight:400">—</span>'}</div></div>`;
+  const sec = (icon, t, b) => `<div class="vsec"><div class="vsec-title">${icon} ${t}</div>${b}</div>`;
   const tbl = (hs, rows) => `<table><thead><tr>${hs.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+  const yn = v => v ? '<span style="color:var(--red);font-weight:700">YES</span>' : '<span style="color:var(--green);font-weight:700">NO</span>';
+  const fam = emp.family || {};
+  const q = emp.questions || {};
+  const refs = emp.references || [];
+
   content.innerHTML = `
     <div class="my-banner">
       <div>
-        <div style="font-size:18px;font-weight:700;color:var(--navy)">${esc(emp.personal.surname)}, ${esc(emp.personal.firstName)} ${esc(emp.personal.middleName)}</div>
+        <div style="font-size:18px;font-weight:700;color:var(--navy)">${esc(emp.personal.surname)}, ${esc(emp.personal.firstName)}${emp.personal.middleName ? ' ' + esc(emp.personal.middleName) : ''}${emp.personal.nameExt ? ' ' + esc(emp.personal.nameExt) : ''}</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:3px">${esc(emp.position)} · ${esc(emp.department)}</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Employee ID: <span style="font-family:'IBM Plex Mono',monospace;font-weight:600">${esc(emp.id)}</span> &nbsp;·&nbsp; Last updated: ${fmt(emp.updatedAt)}</div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         ${sbadge(emp.status)}
-        ${emp.status==='rejected' ? '<span style="font-size:12px;padding:6px 12px;border-radius:6px;background:var(--red-light);color:var(--red);font-weight:500">⚠ Returned by Admin. Please update and resubmit.</span>' : ''}
-        <button class="btn btn-primary" onclick="openMyEdit('${emp.id}')">✏ Edit &amp; Submit PDS</button>
+        ${emp.status==='rejected' ? '<span style="font-size:12px;padding:6px 12px;border-radius:6px;background:var(--red-light);color:var(--red);font-weight:500">⚠ Returned by Admin — please update and resubmit.</span>' : ''}
+        ${emp.status==='pending' ? '<span style="font-size:12px;padding:6px 12px;border-radius:6px;background:var(--amber-light);color:var(--amber);font-weight:500">⏳ Awaiting admin review.</span>' : ''}
+        ${emp.status==='approved' ? '<span style="font-size:12px;padding:6px 12px;border-radius:6px;background:var(--green-light);color:var(--green);font-weight:500">✓ PDS approved.</span>' : ''}
+        <button class="btn btn-primary" onclick="openMyEdit('${emp.id}')">✏ Edit &amp; ${emp.status==='draft'||emp.status==='rejected'?'Submit':'Update'} PDS</button>
         <button class="btn btn-outline" onclick="printPDS('${emp.id}')">⬇ Download PDF</button>
         <button class="btn btn-green" onclick="fillExcelPDS('${emp.id}')">📊 Download Excel</button>
       </div>
     </div>
     <div class="pds-view">
-      ${sec('I. Personal Information', `<div class="info-grid">
-        ${ir('Surname',emp.personal.surname)}${ir('First Name',emp.personal.firstName)}${ir('Middle Name',emp.personal.middleName)}
-        ${ir('Date of Birth',emp.personal.dob)}${ir('Place of Birth',emp.personal.pob)}${ir('Sex',emp.personal.sex)}
-        ${ir('Civil Status',emp.personal.civil)}${ir('Mobile',emp.personal.mobileNo)}${ir('Email',emp.personal.email)}
+      ${sec('👤','I. Personal Information', `<div class="info-grid">
+        ${ir('Surname',emp.personal.surname)}${ir('First Name',emp.personal.firstName)}${ir('Middle Name',emp.personal.middleName)}${ir('Name Extension',emp.personal.nameExt)}
+        ${ir('Date of Birth',emp.personal.dob)}${ir('Place of Birth',emp.personal.pob)}${ir('Sex at Birth',emp.personal.sex)}${ir('Civil Status',emp.personal.civil)}
+        ${ir('Height (m)',emp.personal.height)}${ir('Weight (kg)',emp.personal.weight)}${ir('Blood Type',emp.personal.blood)}${ir('Citizenship',emp.personal.citizenship)}
+        ${ir('UMID ID No.',emp.personal.umid)}${ir('Pag-IBIG ID No.',emp.personal.pagibig)}${ir('PhilHealth No.',emp.personal.philhealth)}${ir('PhilSys No. (PSN)',emp.personal.philsys)}
+        ${ir('TIN No.',emp.personal.tin)}${ir('Agency Employee No.',emp.personal.agencyNo)}${ir('Telephone No.',emp.personal.telNo)}${ir('Mobile No.',emp.personal.mobileNo)}
+        ${ir('E-mail Address',emp.personal.email)}
+      </div>
+      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:6px">17. Residential Address</div>
+          <div style="font-size:12.5px;line-height:1.8;color:var(--text)">${[emp.personal.residHouseNo,emp.personal.residStreet,emp.personal.residSubdiv,emp.personal.residBrgy,emp.personal.residCity,emp.personal.residProv].filter(Boolean).join(', ')||'—'}<br>ZIP: ${esc(emp.personal.residZip||'—')}</div>
+        </div>
+        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:6px">18. Permanent Address</div>
+          <div style="font-size:12.5px;line-height:1.8;color:var(--text)">${[emp.personal.permHouseNo,emp.personal.permStreet,emp.personal.permSubdiv,emp.personal.permBrgy,emp.personal.permCity,emp.personal.permProv].filter(Boolean).join(', ')||'—'}<br>ZIP: ${esc(emp.personal.permZip||'—')}</div>
+        </div>
       </div>`)}
-      ${sec('III. Education', emp.education.length ? tbl(['Level','School','Course','Period','Year Grad','Honors'], emp.education.map(r=>`<tr><td>${esc(r.level)}</td><td>${esc(r.school)}</td><td>${esc(r.course)}</td><td>${esc(r.from)}–${esc(r.to)}</td><td>${esc(r.yearGrad)||'N/A'}</td><td>${esc(r.honors)||'—'}</td></tr>`).join('')) : '<p class="empty-note">No records.</p>')}
-      ${sec('V. Work Experience', emp.workExp.length ? tbl(['From','To','Position','Department','Status'], emp.workExp.map(r=>`<tr><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="font-weight:500">${esc(r.position)}</td><td>${esc(r.dept)}</td><td>${esc(r.status)}</td></tr>`).join('')) : '<p class="empty-note">No records.</p>')}
-      ${sec('VII. Training/L&D', tr.length ? tbl(['Title','From','To','Hours','Type','Conducted By'], tr.map(t=>`<tr><td style="font-weight:500">${esc(t.title)}</td><td>${esc(t.from)}</td><td>${esc(t.to)}</td><td>${esc(t.hours)}</td><td><span class="badge badge-tech">${esc(t.type)}</span></td><td>${esc(t.conductedBy)}</td></tr>`).join('')) : '<p class="empty-note">No training records on file yet.</p>')}
-      ${sec('VIII. Other Info', `<div class="info-grid">${ir('Skills/Hobbies',emp.otherInfo.skills)}${ir('Distinctions',emp.otherInfo.distinctions)}${ir('Memberships',emp.otherInfo.memberships)}</div>`)}
+
+      ${sec('👨‍👩‍👧','II. Family Background', `<div class="info-grid">
+        <div style="grid-column:span 4;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:4px">22. Spouse</div>
+        ${ir('Surname',fam.spouseSurname)}${ir('First Name',fam.spouseFirstName)}${ir('Middle Name',fam.spouseMiddleName)}${ir('Name Extension',fam.spouseExt)}
+        ${ir('Occupation',fam.spouseOccupation)}${ir('Employer/Business Name',fam.spouseEmployer)}${ir('Business Address',fam.spouseBusiness)}${ir('Telephone No.',fam.spouseTel)}
+        <div style="grid-column:span 4;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin:8px 0 4px">24. Father</div>
+        ${ir('Surname',fam.fatherSurname)}${ir('First Name',fam.fatherFirstName)}${ir('Middle Name',fam.fatherMiddleName)}${ir('Name Extension',fam.fatherExt)}
+        <div style="grid-column:span 4;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin:8px 0 4px">25. Mother's Maiden Name</div>
+        ${ir('Surname',fam.motherSurname)}${ir('First Name',fam.motherFirstName)}${ir('Middle Name',fam.motherMiddleName)}
+      </div>
+      ${(fam.children||[]).length ? `<div style="margin-top:12px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px">23. Children</div>${tbl(['Full Name','Date of Birth'],(fam.children||[]).map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.dob)}</td></tr>`).join(''))}</div>` : '<p class="empty-note" style="margin-top:8px">No children on record.</p>'}`)}
+
+      ${sec('🎓','III. Educational Background', emp.education.length ?
+        tbl(['Level','School','Course/Degree','From','To','Units Earned','Year Grad','Honors'],
+          emp.education.map(r=>`<tr><td style="font-weight:600">${esc(r.level)}</td><td>${esc(r.school)}</td><td>${esc(r.course)||'—'}</td><td>${esc(r.from)||'—'}</td><td>${esc(r.to)||'—'}</td><td>${esc(r.units)||'—'}</td><td>${esc(r.yearGrad)||'—'}</td><td>${esc(r.honors)||'—'}</td></tr>`).join(''))
+        : '<p class="empty-note">No education records.</p>')}
+
+      ${sec('📜','IV. Civil Service Eligibility', emp.eligibility.length ?
+        tbl(['Eligibility / Exam','Rating','Date of Exam/Conferment','Place','License No.','Valid Until'],
+          emp.eligibility.map(r=>`<tr><td style="font-weight:500">${esc(r.name)}</td><td>${esc(r.rating)||'N/A'}</td><td>${esc(r.dateConf)||'—'}</td><td>${esc(r.place)||'—'}</td><td>${esc(r.licNo)||'N/A'}</td><td>${esc(r.licValid)||'N/A'}</td></tr>`).join(''))
+        : '<p class="empty-note">No eligibility records.</p>')}
+
+      ${sec('💼','V. Work Experience', emp.workExp.length ?
+        tbl(['From','To','Position Title','Department / Agency / Company','Status','Gov\'t Service'],
+          emp.workExp.map(r=>`<tr><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="font-weight:500">${esc(r.position)}</td><td>${esc(r.dept)}</td><td>${esc(r.status)}</td><td style="text-align:center">${esc(r.govtService)}</td></tr>`).join(''))
+        : '<p class="empty-note">No work experience records.</p>')}
+
+      ${sec('🤝','VI. Voluntary Work / Civic Organizations', (emp.voluntaryWork||[]).length ?
+        tbl(['Organization & Address','From','To','No. of Hours','Position / Nature of Work'],
+          (emp.voluntaryWork||[]).map(r=>`<tr><td>${esc(r.org)}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="text-align:center">${esc(r.hours)}</td><td>${esc(r.position)}</td></tr>`).join(''))
+        : '<p class="empty-note">No voluntary work records.</p>')}
+
+      ${sec('📚','VII. Learning & Development (L&D) / Training Programs', tr.length ?
+        tbl(['Title of Training / L&D','From','To','Hours','Type','Conducted / Sponsored By'],
+          tr.map(t=>`<tr><td style="font-weight:500">${esc(t.title)}</td><td>${esc(t.from)}</td><td>${esc(t.to)}</td><td style="text-align:center">${esc(t.hours)}</td><td><span class="badge badge-tech">${esc(t.type)}</span></td><td>${esc(t.conductedBy)}</td></tr>`).join(''))
+        : '<p class="empty-note">No training records on file yet. Your admin will add these on your behalf.</p>')}
+
+      ${sec('ℹ️','VIII. Other Information', `<div class="info-grid">
+        ${ir('31. Special Skills &amp; Hobbies',(emp.otherInfo||{}).skills)}
+        ${ir('32. Non-Academic Distinctions / Recognition',(emp.otherInfo||{}).distinctions)}
+        ${ir('33. Membership in Association / Organization',(emp.otherInfo||{}).memberships)}
+      </div>`)}
+
+      ${sec('❓','IX. Declarations (Questions 34–40)', `<div style="display:grid;gap:8px">
+        ${[
+          ['34a','Are you related (3rd degree) to the appointing/recommending authority?',null],
+          ['34b','Are you related (4th degree) — for LGU Career Employees?',null],
+          ['35a','Have you ever been found guilty of any administrative offense?','q35aDet'],
+          ['35b','Have you been criminally charged before any court?','q35bDet'],
+          ['36','Have you ever been convicted of any crime?','q36Det'],
+          ['37','Have you ever been separated from the service?','q37Det'],
+          ['38a','Have you ever been a candidate in a national/local election (last year)?','q38aDet'],
+          ['38b','Have you resigned from gov\'t service within 3 months before the last election?','q38bDet'],
+          ['39','Have you acquired immigrant or permanent resident status in another country?','q39Det'],
+          ['40a','Are you a member of any indigenous group? (RA 8371)','q40aSpec'],
+          ['40b','Are you a person with disability? (RA 7277)','q40bId'],
+          ['40c','Are you a solo parent? (RA 11861)','q40cId'],
+        ].map(([k,lbl,detK]) => `<div class="decl-item" style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;font-size:12px;color:var(--text)">${lbl}</div>
+          <div>${yn(q['q'+k])}</div>
+          ${detK && q['q'+k] && q[detK] ? `<div style="flex-basis:100%;font-size:11px;color:var(--red-light);background:var(--red-light);border-radius:4px;padding:4px 8px;color:var(--red)">Details: ${esc(q[detK])}</div>` : ''}
+        </div>`).join('')}
+      </div>`)}
+
+      ${sec('📞','41. References', refs.filter(r=>r.name).length ?
+        tbl(['Name','Office / Residential Address','Contact No. / Email'],
+          refs.filter(r=>r.name).map(r=>`<tr><td style="font-weight:500">${esc(r.name)}</td><td>${esc(r.address)}</td><td>${esc(r.contact)}</td></tr>`).join(''))
+        : '<p class="empty-note">No references listed.</p>')}
+
+      ${sec('🪪','42. Government Issued ID', `<div class="info-grid">
+        ${ir('Government Issued ID',emp.govtId)}
+        ${ir('ID / License / Passport No.',emp.govtIdNo)}
+        ${ir('Date / Place of Issuance',emp.govtIdIssuance)}
+        ${ir('Date Accomplished',emp.dateAccomplished)}
+      </div>`)}
     </div>`;
 }
-function openMyNew() { editingPDS = blankPDS(); navigate('pdsForm'); renderPDSForm(); }
+function openMyNew() {
+  editingPDS = blankPDS();
+  // Pre-assign the employee's own ID so it saves back to the right record
+  if (currentUser && currentUser.empId && currentUser.empId !== 'NEW') {
+    editingPDS.id = currentUser.empId;
+  }
+  navigate('pdsForm'); renderPDSForm();
+}
 function openMyEdit(id) { editingPDS = JSON.parse(JSON.stringify(employees.find(e=>e.id===id)||blankPDS())); navigate('pdsForm'); renderPDSForm(); }
 
 // ══════════ PRINT PDS — fills official CS Form 212 (Revised 2025) PDF ══════════
