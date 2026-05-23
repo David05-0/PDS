@@ -1620,10 +1620,10 @@ async function fillDocxPDS(id) {
   if (!e) { toast('Employee not found.', 'error'); return; }
   toast('Generating filled DOCX…', 'success');
 
-  const tr  = empTr(id);
-  const pr  = e.personal  || {};
-  const fam = e.family    || {};
-  const q   = e.questions || {};
+  const tr   = empTr(id);
+  const pr   = e.personal  || {};
+  const fam  = e.family    || {};
+  const q    = e.questions || {};
   const refs = (() => {
     const base = (e.references || []).filter(r => r && r.name);
     while (base.length < 3) base.push({name:'',address:'',contact:''});
@@ -1666,309 +1666,376 @@ async function fillDocxPDS(id) {
   }
 
   try {
-    // Load JSZip
-    const JSZip = (await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js')).default
-      || window.JSZip
-      || (await new Promise(res => {
-          const s = document.createElement('script');
-          s.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
-          s.onload = () => res(window.JSZip);
-          document.head.appendChild(s);
-        }));
+    // ── Load JSZip ────────────────────────────────────────────────────────────
+    let JSZip = null;
+    try { JSZip = (await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js')).default; } catch {}
+    if (!JSZip) JSZip = window.JSZip;
+    if (!JSZip) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+        s.onload = () => { JSZip = window.JSZip; res(); };
+        s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+    if (!JSZip) throw new Error('JSZip failed to load.');
 
-    // Fetch the docx template
+    // ── Fetch template ────────────────────────────────────────────────────────
     const res = await fetch('pds_template.docx');
-    if (!res.ok) throw new Error('Could not load pds_template.docx. Make sure it is deployed with the app.');
-    const buf = await res.arrayBuffer();
-    const zip = await JSZip.loadAsync(buf);
-
-    // Get document.xml as text
+    if (!res.ok) throw new Error('Could not load pds_template.docx. Make sure it is deployed alongside the app.');
+    const zip = await JSZip.loadAsync(await res.arrayBuffer());
     let xml = await zip.file('word/document.xml').async('string');
 
-    // ── Parse tables: split XML into 4 table chunks ─────────────────────────
-    // We'll use a cell accessor that works on the raw XML string via
-    // splitting by <w:tbl> and <w:tr> and <w:tc> boundaries.
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    // Format ISO date → dd/mm/yyyy
+    function fd(d) {
+      if (!d) return '';
+      const p = String(d).split('-');
+      return (p.length === 3 && p[0].length === 4) ? `${p[2]}/${p[1]}/${p[0]}` : String(d);
+    }
+    const sv = s => (s || '').toString().trim();
+    const yn = b => (b === true || b === 'Yes' || b === 'Y') ? 'YES' : 'NO';
 
-    const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    // Inject text into a cell's first paragraph, preserving paragraph properties
+    function setCellText(cellXml, text) {
+      if (!text) return cellXml;
+      const escaped = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const run = `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">${escaped}</w:t></w:r>`;
+      return cellXml.replace(/(<w:p\b[^>]*>)([\s\S]*?)(<\/w:p>)/, (m, open, inner, close) => {
+        const ppr = (inner.match(/<w:pPr[\s\S]*?<\/w:pPr>/) || [''])[0];
+        return `${open}${ppr}${run}${close}`;
+      });
+    }
 
-    // Split into table blocks
-    const tblSplit = xml.split(/<w:tbl(?:\s|>)/);
-    // tblSplit[0] = before tables, tblSplit[1..4] = table bodies (without opening tag)
-    // We need to reconstruct: work table by table, row by row, cell by cell
-
-    // Build a mutable structure: array of tables, each = array of rows, each = array of cell XML strings
+    // ── Parse tables ──────────────────────────────────────────────────────────
     function parseTables(rawXml) {
       const tables = [];
       const tblRx = /<w:tbl[\s\S]*?<\/w:tbl>/g;
-      let tblMatch;
-      while ((tblMatch = tblRx.exec(rawXml)) !== null) {
-        const tblXml = tblMatch[0];
-        const rowRx = /<w:tr\b[\s\S]*?<\/w:tr>/g;
+      let m;
+      while ((m = tblRx.exec(rawXml)) !== null) {
         const rows = [];
-        let rowMatch;
-        while ((rowMatch = rowRx.exec(tblXml)) !== null) {
-          const rowXml = rowMatch[0];
-          const cellRx = /<w:tc\b[\s\S]*?<\/w:tc>/g;
+        const rowRx = /<w:tr\b[\s\S]*?<\/w:tr>/g;
+        let rm;
+        while ((rm = rowRx.exec(m[0])) !== null) {
           const cells = [];
-          let cellMatch;
-          while ((cellMatch = cellRx.exec(rowXml)) !== null) {
-            cells.push(cellMatch[0]);
-          }
-          rows.push({ xml: rowXml, cells });
+          const cellRx = /<w:tc\b[\s\S]*?<\/w:tc>/g;
+          let cm;
+          while ((cm = cellRx.exec(rm[0])) !== null) cells.push(cm[0]);
+          rows.push({ xml: rm[0], cells });
         }
-        tables.push({ xml: tblXml, rows, start: tblMatch.index, end: tblMatch.index + tblXml.length });
+        tables.push({ xml: m[0], rows, start: m.index, end: m.index + m[0].length });
       }
       return tables;
     }
 
     const tables = parseTables(xml);
-    if (tables.length < 4) throw new Error('Template structure error: expected 4 tables (one per page).');
+    if (tables.length < 4) throw new Error(`Template has ${tables.length} table(s); expected 4 (one per page).`);
 
-    // Helper: set text in cell [tableIdx][rowIdx][cellIdx]
-    function fill(tIdx, rIdx, cIdx, text, bold=false, size=16) {
-      if (!text) return;
-      const tbl = tables[tIdx];
-      if (!tbl || rIdx >= tbl.rows.length) return;
-      const row = tbl.rows[rIdx];
-      if (!row || cIdx >= row.cells.length) return;
-      const oldCell = row.cells[cIdx];
-      row.cells[cIdx] = setCellText(oldCell, sv(text), bold, size);
+    // fill(tableIdx, rowIdx, cellIdx, text)
+    function fill(ti, ri, ci, text) {
+      if (!sv(text)) return;
+      const tbl = tables[ti]; if (!tbl) return;
+      const row = tbl.rows[ri]; if (!row) return;
+      const cell = row.cells[ci]; if (cell === undefined) return;
+      row.cells[ci] = setCellText(cell, sv(text));
     }
 
-    // Rebuild a table's XML from mutated cells
+    // Rebuild each table's XML from its (mutated) cells
     function rebuildTbl(tbl) {
       let out = tbl.xml;
-      // Replace each row's original XML with the mutated version
       for (const row of tbl.rows) {
-        let newRow = row.xml;
-        for (let ci = 0; ci < row.cells.length; ci++) {
-          const orig = row.cells[ci]; // already mutated in place
-          // rebuild row by splicing cells back — since we mutated row.cells[]
-          // we need to compare with original. Simplest: rebuild row from scratch.
-        }
-        // Actually re-build by replacing cell xmls in the row xml
-        // We stored the mutated cell xml directly; reconstruct row from cells
-        const cellBlock = row.cells.join('');
-        // Extract trPr if any
         const trPr = (row.xml.match(/<w:trPr[\s\S]*?<\/w:trPr>/) || [''])[0];
-        // Get the opening tag
         const openTag = row.xml.match(/^<w:tr\b[^>]*>/)[0];
-        newRow = `${openTag}${trPr}${cellBlock}</w:tr>`;
+        const newRow = `${openTag}${trPr}${row.cells.join('')}</w:tr>`;
         out = out.replace(row.xml, newRow);
       }
       return out;
     }
 
-    // ── PAGE 1 / TABLE 0: Personal Info, Family, Education ──────────────────
-    const T = (t,r,c,text,bold=false) => fill(t,r,c,text,bold,16);
-    const TB= (t,r,c,text) => fill(t,r,c,text,true,18); // bigger bold for name
+    // ── TABLE 0 — Page 1: Personal Info + Family + Education ─────────────────
+    // Verified cell map from actual template structure:
+    // R03(2c): [label | SURNAME entry]
+    // R04(3c): [FIRST NAME entry | MIDDLE NAME entry | NAME EXT label]  — EXT entry is in R04c2
+    // R05(2c): [MIDDLE NAME entry | blank]
+    // R06(5c): [DOB label | DOB entry | CITIZENSHIP label | Filipino chk | Dual chk]
+    // R07(5c): [POB label | POB entry | blank | blank | blank]
+    // R08(4c): [SEX label | Male/Female | blank | blank]
+    // R09(4c): [CIVIL STATUS label | Single/Married/etc | RESIDENTIAL ADDR+ZIP label | ZIP entry]
+    // R10(5c): [blank | blank | blank | House/Block label | Street label]
+    // R11(4c): [blank | blank | blank | blank] ← House entry | Street entry
+    // R12(5c): [blank | blank | blank | Subdiv label | Barangay label]
+    // R13(4c): [HEIGHT label | HEIGHT entry | blank | blank] ← Subdiv entry | Brgy entry
+    // R14(5c): [blank | blank | blank | City label | Province label]
+    // R15(4c): [WEIGHT label | WEIGHT entry | blank | blank] ← City entry | Prov entry
+    // R16(4c): [BLOOD label | BLOOD entry | PERMANENT ADDR+ZIP label | ZIP entry]
+    // R17(5c): [blank | blank | blank | House/Block label | Street label]
+    // R18(4c): [UMID label | UMID entry | blank | blank] ← Perm House | Perm Street
+    // R19(5c): [blank | blank | blank | Subdiv label | Barangay label]
+    // R20(4c): [PAG-IBIG label | PAG-IBIG entry | blank | blank] ← Perm Subdiv | Perm Brgy
+    // R21(5c): [blank | blank | blank | City label | Province label]
+    // R22(4c): [PHILHEALTH label | PHILHEALTH entry | blank | blank] ← Perm City | Perm Prov
+    // R23(4c): [PhilSys label | PhilSys entry | TEL label | TEL entry]
+    // R24(4c): [TIN label | TIN entry | MOBILE label | MOBILE entry]
+    // R25(4c): [AGENCY NO label | AGENCY NO entry | EMAIL label | EMAIL entry]
+    // R27(4c): [SPOUSE SURNAME/FIRST/MIDDLE labels | SPOUSE entry | CHILDREN NAME header | DOB header]
+    // R28(5c): [blank | blank | NAME EXT label | blank | blank]
+    // R29(4c): [blank | SPOUSE MIDDLE entry | blank | blank]  ← children row
+    // R30(4c): [OCCUPATION label | OCC entry | blank | blank]
+    // R31(4c): [EMPLOYER label | EMP entry | blank | blank]
+    // R32(4c): [BUSINESS ADDR label | BUS entry | blank | blank]
+    // R33(4c): [TELEPHONE label | TEL entry | blank | blank]
+    // R34(4c): [FATHER SURNAME/FIRST/MIDDLE labels | FATHER SURNAME entry | blank | blank]
+    // R35(5c): [blank | FATHER FIRST entry | NAME EXT label | FATHER EXT entry | blank]
+    // R36(4c): [blank | FATHER MIDDLE entry | blank | blank]
+    // R37(3c): [MOTHER label | MOTHER SURNAME entry | blank]
+    // R38(4c): [SURNAME/FIRST/MIDDLE labels | MOTHER FIRST entry | blank | blank]
+    // R39(4c): [blank | MOTHER MIDDLE entry | blank | blank]
+    // R44(8c): [ELEMENTARY | school | course | from | to | units | yearGrad | honors]
+    // R45(8c): [SECONDARY | ...]
+    // R46(8c): [VOCATIONAL | ...]
+    // R47(8c): [COLLEGE | ...]
+    // R48(8c): [GRADUATE | ...]
 
-    // Row 3 (idx3): Surname in C1
-    TB(0, 3, 1, sv(pr.surname).toUpperCase());
-    // Row 4 (idx4): First name C0, NameExt C1
-    TB(0, 4, 0, sv(pr.firstName).toUpperCase());
-    T(0, 4, 1, sv(pr.nameExt));
-    // Row 5 (idx5): Middle name C0
-    TB(0, 5, 0, sv(pr.middleName).toUpperCase());
+    // Personal info
+    fill(0, 3,  1, sv(pr.surname).toUpperCase());
+    fill(0, 4,  0, sv(pr.firstName).toUpperCase());
+    fill(0, 5,  0, sv(pr.middleName).toUpperCase());
+    fill(0, 4,  2, sv(pr.nameExt));   // NAME EXTENSION label is R04c2; entry fills same cell area
+    fill(0, 6,  1, fd(pr.dob));
+    fill(0, 6,  3, pr.dualCitizenship ? '' : 'Filipino ✓');
+    fill(0, 6,  4, pr.dualCitizenship ? `Dual ✓ — ${sv(pr.dualCountry)}` : '');
+    fill(0, 7,  1, sv(pr.pob));
+    fill(0, 8,  1, sv(pr.sex));
+    fill(0, 9,  1, sv(pr.civil));
+    fill(0, 9,  3, sv(pr.residZip));
 
-    // Row 6 (idx6): DOB in C1
-    T(0, 6, 1, fd(pr.dob));
-    // Citizenship row 7 C2 blank
-    T(0, 7, 2, pr.dualCitizenship ? `Dual Citizenship — ${sv(pr.dualCountry)}` : 'Filipino');
+    // Height / Weight / Blood (left col, rows 13/15/16)
+    fill(0, 13, 1, sv(pr.height));
+    fill(0, 15, 1, sv(pr.weight));
+    fill(0, 16, 1, sv(pr.blood));
 
-    // Row 7 (idx7): Place of birth C1
-    T(0, 7, 1, sv(pr.pob));
-    // Row 8 (idx8): Sex C2
-    T(0, 8, 2, sv(pr.sex));
-    // Row 9 (idx9): Civil status C3, Residential ZIP
-    T(0, 9, 3, sv(pr.civil));
-
-    // Residential address (rows 11,12,13,14 — idx10,11,12,13)
-    T(0, 11, 3, sv(pr.residHouseNo));
-    T(0, 11, 4, sv(pr.residStreet));
-    T(0, 12, 3, sv(pr.residSubdiv));
-    T(0, 12, 4, sv(pr.residBrgy));
-    T(0, 13, 3, sv(pr.residCity));
-    T(0, 13, 4, sv(pr.residProv));
-    // ZIP for residential goes in row 9 C3 — already filled with civil status above
-    // Let's check: R10(idx9)C3 = "17. RESIDENTIAL ADDRESS ZIP CODE" — the ZIP input blank is C3
-    // But C3 was set to civil status — check cell map:
-    // R10C1=6 CIVIL STATUS, R10C2=Single..., R10C3=17. RESIDENTIAL ADDRESS ZIP CODE, R10C4=blank
-    T(0, 9, 3, sv(pr.residZip));  // blank for ZIP in addr section
-
-    // Height/Weight/Blood
-    T(0, 13, 1, sv(pr.height));
-    T(0, 15, 1, sv(pr.weight));
-    T(0, 16, 1, sv(pr.blood));
+    // Residential address
+    // R10(5c): labels [blank|blank|blank|House/Block|Street]
+    // R11(4c): data   [blank|blank|blank|house entry] — street merges rightward
+    fill(0, 11, 3, sv(pr.residHouseNo) + (pr.residStreet ? ', ' + sv(pr.residStreet) : ''));
+    // R12(5c): labels [blank|blank|blank|Subdiv|Barangay]
+    // R13(4c): data (HEIGHT row) — right side has subdiv/brgy
+    fill(0, 13, 2, sv(pr.residSubdiv));
+    fill(0, 13, 3, sv(pr.residBrgy));
+    // R14(5c): labels [blank|blank|blank|City|Province]
+    // R15(4c): data (WEIGHT row) — right side has city/prov
+    fill(0, 15, 2, sv(pr.residCity));
+    fill(0, 15, 3, sv(pr.residProv));
 
     // Permanent address
-    T(0, 18, 3, sv(pr.permHouseNo));
-    T(0, 18, 4, sv(pr.permStreet));
-    T(0, 19, 3, sv(pr.permSubdiv));
-    T(0, 19, 4, sv(pr.permBrgy));
-    T(0, 21, 3, sv(pr.permCity));
-    T(0, 21, 4, sv(pr.permProv));
-    T(0, 16, 3, sv(pr.permZip));
+    fill(0, 16, 3, sv(pr.permZip));
+    // R17(5c): labels [blank|blank|blank|House|Street]
+    // R18(4c): data (UMID row) — right side has perm house/street
+    fill(0, 18, 2, sv(pr.permHouseNo) + (pr.permStreet ? ', ' + sv(pr.permStreet) : ''));
+    // R19(5c): labels → R20(4c): data (PAGIBIG row)
+    fill(0, 20, 2, sv(pr.permSubdiv));
+    fill(0, 20, 3, sv(pr.permBrgy));
+    // R21(5c): labels → R22(4c): data (PHILHEALTH row)
+    fill(0, 22, 2, sv(pr.permCity));
+    fill(0, 22, 3, sv(pr.permProv));
 
-    // IDs
-    T(0, 18, 1, sv(pr.umid));
-    T(0, 20, 1, sv(pr.pagibig));
-    T(0, 22, 1, sv(pr.philhealth));
-    T(0, 23, 1, sv(pr.philsys));
-    T(0, 24, 1, sv(pr.tin));
-    T(0, 25, 1, sv(pr.agencyNo));
+    // IDs (left column)
+    fill(0, 18, 1, sv(pr.umid));
+    fill(0, 20, 1, sv(pr.pagibig));
+    fill(0, 22, 1, sv(pr.philhealth));
+    fill(0, 23, 1, sv(pr.philsys));
+    fill(0, 24, 1, sv(pr.tin));
+    fill(0, 25, 1, sv(pr.agencyNo));
 
-    // Contact
-    T(0, 23, 3, sv(pr.telNo));
-    T(0, 24, 3, sv(pr.mobileNo));
-    T(0, 25, 3, sv(pr.email));
+    // Contact (right column)
+    fill(0, 23, 3, sv(pr.telNo));
+    fill(0, 24, 3, sv(pr.mobileNo));
+    fill(0, 25, 3, sv(pr.email));
 
-    // Family — Spouse (rows 27-33, idx 27-33)
-    T(0, 27, 1, sv(fam.spouseSurname));
-    T(0, 28, 1, sv(fam.spouseFirstName));
-    T(0, 28, 2, sv(fam.spouseExt));
-    T(0, 29, 1, sv(fam.spouseMiddleName));
-    T(0, 30, 1, sv(fam.spouseOccupation));
-    T(0, 31, 1, sv(fam.spouseEmployer));
-    T(0, 32, 1, sv(fam.spouseBusiness));
-    T(0, 33, 1, sv(fam.spouseTel));
-    // Father (rows 34-36, idx 34-36)
-    T(0, 34, 1, sv(fam.fatherSurname));
-    T(0, 35, 1, sv(fam.fatherFirstName));
-    T(0, 35, 2, sv(fam.fatherExt));
-    T(0, 36, 1, sv(fam.fatherMiddleName));
-    // Mother (rows 37-40, idx 37-40)
-    T(0, 37, 1, sv(fam.motherSurname));
-    T(0, 38, 1, sv(fam.motherFirstName));
-    T(0, 39, 1, sv(fam.motherMiddleName));
+    // Family — Spouse (R27–R33)
+    // R27: c0=labels, c1=Surname entry, c2=Children Name header, c3=DOB header
+    fill(0, 27, 1, sv(fam.spouseSurname).toUpperCase());
+    fill(0, 28, 1, sv(fam.spouseFirstName).toUpperCase());
+    fill(0, 28, 3, sv(fam.spouseExt));
+    fill(0, 29, 1, sv(fam.spouseMiddleName).toUpperCase());
+    fill(0, 30, 1, sv(fam.spouseOccupation));
+    fill(0, 31, 1, sv(fam.spouseEmployer));
+    fill(0, 32, 1, sv(fam.spouseBusiness));
+    fill(0, 33, 1, sv(fam.spouseTel));
 
-    // Children — right side (last 2 cols of rows 27-40)
-    const children = fam.children || [];
-    children.slice(0,10).forEach((ch, i) => {
-      const r = tables[0].rows[27 + i];
-      if (!r) return;
-      const n = r.cells.length;
-      if (n >= 2) {
-        r.cells[n-2] = setCellText(r.cells[n-2], sv(ch.name));
-        r.cells[n-1] = setCellText(r.cells[n-1], fd(ch.dob));
+    // Children (right side of R27–R39, c2=name, c3=dob)
+    (fam.children || []).slice(0, 11).forEach((ch, i) => {
+      const row = tables[0].rows[27 + i]; if (!row) return;
+      const n = row.cells.length;
+      if (n >= 4) {
+        row.cells[n-2] = setCellText(row.cells[n-2], sv(ch.name));
+        row.cells[n-1] = setCellText(row.cells[n-1], fd(ch.dob));
       }
     });
 
-    // Education (rows 44-48, idx 44-48) — Elementary/Secondary/Vocational/College/Graduate
-    const eduMap = [['elementary',44],['secondary',45],['vocational',46],['college',47],['graduate',48]];
-    eduMap.forEach(([lvl, ridx]) => {
+    // Father (R34–R36)
+    fill(0, 34, 1, sv(fam.fatherSurname).toUpperCase());
+    fill(0, 35, 1, sv(fam.fatherFirstName).toUpperCase());
+    fill(0, 35, 3, sv(fam.fatherExt));
+    fill(0, 36, 1, sv(fam.fatherMiddleName).toUpperCase());
+
+    // Mother (R37–R39)
+    fill(0, 37, 1, sv(fam.motherSurname).toUpperCase());
+    fill(0, 38, 1, sv(fam.motherFirstName).toUpperCase());
+    fill(0, 39, 1, sv(fam.motherMiddleName).toUpperCase());
+
+    // Education (R44–R48: 8 cells each: [level | school | course | from | to | units | yearGrad | honors])
+    [['elementary',44],['secondary',45],['vocational',46],['college',47],['graduate',48]].forEach(([lvl, ri]) => {
       const ed = (e.education||[]).find(x => (x.level||'').toLowerCase().startsWith(lvl));
       if (!ed) return;
-      T(0, ridx, 1, sv(ed.school));
-      T(0, ridx, 2, sv(ed.course));
-      T(0, ridx, 3, fd(ed.from)||sv(ed.from));
-      T(0, ridx, 4, fd(ed.to)||sv(ed.to));
-      T(0, ridx, 5, sv(ed.units));
-      T(0, ridx, 6, sv(ed.yearGrad));
-      T(0, ridx, 7, sv(ed.honors));
+      fill(0, ri, 1, sv(ed.school));
+      fill(0, ri, 2, sv(ed.course));
+      fill(0, ri, 3, sv(ed.from));
+      fill(0, ri, 4, sv(ed.to));
+      fill(0, ri, 5, sv(ed.units));
+      fill(0, ri, 6, sv(ed.yearGrad));
+      fill(0, ri, 7, sv(ed.honors));
     });
 
-    // ── PAGE 2 / TABLE 1: Eligibility + Work Experience ─────────────────────
-    // Eligibility rows 3-10 (idx 2-9)
-    (e.eligibility||[]).slice(0,8).forEach((el, i) => {
-      T(1, 2+i, 0, sv(el.name));
-      T(1, 2+i, 1, sv(el.rating));
-      T(1, 2+i, 2, fd(el.dateConf)||sv(el.dateConf));
-      T(1, 2+i, 3, sv(el.place));
-      T(1, 2+i, 4, sv(el.licNo));
-      T(1, 2+i, 5, sv(el.licValid));
+    // ── TABLE 1 — Page 2: Eligibility + Work Experience ──────────────────────
+    // R00: section header
+    // R01(5c): header row — [eligibility name | rating | date | place | license]
+    // R02(6c): sub-header — [...| | | | NUMBER | Valid Until]
+    // R03–R09(6c): data rows — [name | rating | date | place | licNo | licValid]
+    // R11: WORK EXPERIENCE header
+    // R12(5c): WE header row
+    // R13(6c): From | To | (position spans cols 2-3) | (dept spans) | status | govtSvc
+    // R14–R41(6c): data rows — [from | to | position | dept | status | govtSvc]
+
+    (e.eligibility||[]).slice(0, 7).forEach((el, i) => {
+      fill(1, 3+i, 0, sv(el.name));
+      fill(1, 3+i, 1, sv(el.rating));
+      fill(1, 3+i, 2, fd(el.dateConf) || sv(el.dateConf));
+      fill(1, 3+i, 3, sv(el.place));
+      fill(1, 3+i, 4, sv(el.licNo));
+      fill(1, 3+i, 5, sv(el.licValid));
     });
 
-    // Work Experience rows 14-41 (idx 13-40) — header at idx13 has From/To cols
-    // Data starts idx 14
-    (e.workExp||[]).slice(0,28).forEach((wk, i) => {
-      const ridx = 14 + i;
-      T(1, ridx, 0, fd(wk.from)||sv(wk.from));
-      T(1, ridx, 1, fd(wk.to)||sv(wk.to));
-      T(1, ridx, 2, sv(wk.position));
-      T(1, ridx, 3, sv(wk.dept));
-      T(1, ridx, 4, sv(wk.status));
+    (e.workExp||[]).slice(0, 28).forEach((wk, i) => {
+      const ri = 14 + i;
+      fill(1, ri, 0, fd(wk.from) || sv(wk.from));
+      fill(1, ri, 1, wk.to === 'Present' ? 'Present' : fd(wk.to) || sv(wk.to));
+      fill(1, ri, 2, sv(wk.position));
+      fill(1, ri, 3, sv(wk.dept));
+      fill(1, ri, 4, sv(wk.status));
       const gs = wk.govtService;
-      T(1, ridx, 5, (gs==='Yes'||gs===true||gs==='Y') ? 'Y' : (gs==='No'||gs===false||gs==='N') ? 'N' : sv(gs));
+      fill(1, ri, 5, (gs==='Yes'||gs===true||gs==='Y') ? 'Y' : (gs==='No'||gs===false||gs==='N') ? 'N' : sv(gs));
     });
 
-    // ── PAGE 3 / TABLE 2: Voluntary Work + Training + Other Info ────────────
-    // Voluntary Work rows 3-10 (idx 2-9) — header at idx2 has From/To
-    // Data from idx 3
-    (e.voluntaryWork||[]).slice(0,7).forEach((vw, i) => {
-      const ridx = 3 + i;
-      T(2, ridx, 0, sv(vw.org||vw.name||''));
-      T(2, ridx, 1, fd(vw.from)||sv(vw.from));
-      T(2, ridx, 2, fd(vw.to)||sv(vw.to));
-      T(2, ridx, 3, sv(vw.hours));
-      T(2, ridx, 4, sv(vw.position));
+    // ── TABLE 2 — Page 3: Voluntary Work + L&D Training + Other Info ─────────
+    // R00: section header
+    // R01(4c): header — [org | inclusive dates | hours | position]
+    // R02(5c): sub-header — [blank | From | To | blank | blank]
+    // R03–R09(5c): data — [org | from | to | hours | position]
+    // R11: L&D header
+    // R12(5c): L&D header row
+    // R13(6c): sub-header — [blank | From | To | blank | blank | blank]
+    // R14–R34(6c): data — [title | from | to | hours | type | conductedBy]
+    // R36: OTHER INFO section
+    // R37(3c): column headers
+    // R38–R44(3c): data — [skills | distinctions | memberships]
+
+    (e.voluntaryWork||[]).slice(0, 7).forEach((vw, i) => {
+      fill(2, 3+i, 0, sv(vw.org || vw.name || ''));
+      fill(2, 3+i, 1, fd(vw.from) || sv(vw.from));
+      fill(2, 3+i, 2, fd(vw.to)   || sv(vw.to));
+      fill(2, 3+i, 3, sv(vw.hours));
+      fill(2, 3+i, 4, sv(vw.position));
     });
 
-    // Training rows 14-35 (idx 13-34) — header at idx13
-    tr.slice(0,22).forEach((t, i) => {
-      const ridx = 14 + i;
-      T(2, ridx, 0, sv(t.title));
-      T(2, ridx, 1, fd(t.from)||sv(t.from));
-      T(2, ridx, 2, fd(t.to)||sv(t.to));
-      T(2, ridx, 3, sv(t.hours));
-      T(2, ridx, 4, sv(t.type));
-      T(2, ridx, 5, sv(t.conductedBy));
+    tr.slice(0, 21).forEach((t, i) => {
+      fill(2, 14+i, 0, sv(t.title));
+      fill(2, 14+i, 1, fd(t.from) || sv(t.from));
+      fill(2, 14+i, 2, fd(t.to)   || sv(t.to));
+      fill(2, 14+i, 3, sv(t.hours));
+      fill(2, 14+i, 4, sv(t.type));
+      fill(2, 14+i, 5, sv(t.conductedBy));
     });
 
-    // Other Info rows 38-44 (idx 38-44) — one item per row per column
     const oi = e.otherInfo || {};
     const skills = (oi.skills||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
     const dists  = (oi.distinctions||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
     const membs  = (oi.memberships||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
-    const maxOI  = Math.max(skills.length, dists.length, membs.length, 1);
-    for (let i = 0; i < Math.min(maxOI, 7); i++) {
-      if (skills[i]) T(2, 38+i, 0, skills[i]);
-      if (dists[i])  T(2, 38+i, 1, dists[i]);
-      if (membs[i])  T(2, 38+i, 2, membs[i]);
+    for (let i = 0; i < Math.min(Math.max(skills.length, dists.length, membs.length, 1), 7); i++) {
+      if (skills[i]) fill(2, 38+i, 0, skills[i]);
+      if (dists[i])  fill(2, 38+i, 1, dists[i]);
+      if (membs[i])  fill(2, 38+i, 2, membs[i]);
     }
 
-    // ── PAGE 4 / TABLE 3: Declarations + References + Gov't ID ──────────────
-    // Q40 details in blank cells rows 7-8 (idx 7-8)
-    if (q.q40aSpec) T(3, 7, 2, `Yes — ${sv(q.q40aSpec)}`);
-    if (q.q40bId)   T(3, 8, 2, `Yes — ${sv(q.q40bId)}`);
-    if (q.q40cId)   T(3, 8, 2, `Yes — ${sv(q.q40cId)}`);
+    // ── TABLE 3 — Page 4: Declarations + References + Gov't ID ───────────────
+    // R00(2c): Q34 — [question | YES/NO + details]
+    // R01(2c): Q35a
+    // R02(2c): Q35b (criminally charged)
+    // R03(2c): Q36
+    // R04(2c): Q37
+    // R05(2c): Q38 (a+b combined)
+    // R06(2c): Q39
+    // R07(3c): Q40 (a+b+c)
+    // R08(3c): Q40 details continuation
+    // R09(2c): REFERENCES section header + photo box
+    // R10(4c): References column headers — [NAME | ADDRESS | CONTACT | blank]
+    // R11–R13(4c): reference data rows
+    // R14(2c): Declaration oath
+    // R17(7c): Gov't ID section
+    // R18(7c): Government Issued ID: [blank | label | ID entry | ...]
+    // R19(7c): ID/License/Passport No.: [blank | label | entry | ...]
+    // R21(7c): Date/Place of Issuance: [blank | label | entry | ...]
+    // R22(7c): Date Accomplished row
 
-    // References rows 12-14 (idx 11-13)
+    // YES/NO answers go in cell index 1 (right column) of each declaration row
+    const declFill = (ri, val, detail) => {
+      fill(3, ri, 1, yn(val) + (detail ? ` — ${sv(detail)}` : ''));
+    };
+    declFill(0, q.q34a || q.q34b, q.q34det);
+    declFill(1, q.q35a, q.q35aDet);
+    declFill(2, q.q35b, q.q35bDet);
+    declFill(3, q.q36,  q.q36Det);
+    declFill(4, q.q37,  q.q37Det);
+    declFill(5, q.q38a || q.q38b, (q.q38aDet || q.q38bDet));
+    declFill(6, q.q39,  q.q39Det);
+    // Q40 (row 7 has 3 cells)
+    fill(3, 7, 1,
+      `40a: ${yn(q.q40a)}${q.q40aSpec?' ('+q.q40aSpec+')':''} | ` +
+      `40b: ${yn(q.q40b)}${q.q40bId?' ID:'+q.q40bId:''} | ` +
+      `40c: ${yn(q.q40c)}${q.q40cId?' ID:'+q.q40cId:''}`
+    );
+
+    // References (R11–R13, 4 cells each)
     refs.forEach((ref, i) => {
-      T(3, 11+i, 0, sv(ref.name));
-      T(3, 11+i, 1, sv(ref.address));
-      T(3, 11+i, 2, sv(ref.contact));
+      fill(3, 11+i, 0, sv(ref.name));
+      fill(3, 11+i, 1, sv(ref.address));
+      fill(3, 11+i, 2, sv(ref.contact));
     });
 
-    // Gov't ID rows 19-23 (idx 18-22)
-    T(3, 18, 2, sv(e.govtId));
-    T(3, 19, 2, sv(e.govtIdNo));
-    T(3, 21, 2, sv(e.govtIdIssuance));
-    T(3, 22, 4, sv(e.dateAccomplished));
+    // Gov't ID (R18–R22)
+    fill(3, 18, 2, sv(e.govtId));
+    fill(3, 19, 2, sv(e.govtIdNo));
+    fill(3, 21, 2, sv(e.govtIdIssuance));
+    fill(3, 22, 4, sv(e.dateAccomplished));
 
-    // ── Rebuild XML ─────────────────────────────────────────────────────────
-    // Replace each original table XML block with rebuilt version
+    // ── Rebuild + download ────────────────────────────────────────────────────
     let newXml = xml;
-    // Process in reverse order so string positions don't shift
-    for (let i = tables.length-1; i >= 0; i--) {
+    for (let i = tables.length - 1; i >= 0; i--) {
       const tbl = tables[i];
-      const rebuilt = rebuildTbl(tbl);
-      newXml = newXml.slice(0, tbl.start) + rebuilt + newXml.slice(tbl.end);
+      newXml = newXml.slice(0, tbl.start) + rebuildTbl(tbl) + newXml.slice(tbl.end);
     }
-
-    // Save back into the zip and download
     zip.file('word/document.xml', newXml);
-    const outBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-
-    const url = URL.createObjectURL(outBlob);
-    const a   = document.createElement('a');
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href     = url;
     a.download = `PDS_${sv(pr.surname).toUpperCase()}_${sv(pr.firstName).toUpperCase()}_CS212_2025.docx`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 8000);
     toast('DOCX downloaded! Open in MS Word or LibreOffice. ✓', 'success');
 
-  } catch(err) {
+  } catch (err) {
     console.error('DOCX fill error:', err);
     toast('DOCX error: ' + err.message, 'error');
   }
