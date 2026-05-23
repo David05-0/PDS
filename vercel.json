@@ -4,14 +4,12 @@
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "styles.css", "use": "@vercel/static" },
     { "src": "app.js", "use": "@vercel/static" },
-    { "src": "pds_template.pdf", "use": "@vercel/static" },
-    { "src": "ANNEX_H-1_-_CS_Form_No__212_Revised_2025_-_Personal_Data_Sheet.xlsx", "use": "@vercel/static" }
+    { "src": "pds_template.docx", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/styles.css", "dest": "/styles.css" },
     { "src": "/app.js", "dest": "/app.js" },
-    { "src": "/pds_template.pdf", "dest": "/pds_template.pdf" },
-    { "src": "/ANNEX_H-1_-_CS_Form_No__212_Revised_2025_-_Personal_Data_Sheet.xlsx", "dest": "/ANNEX_H-1_-_CS_Form_No__212_Revised_2025_-_Personal_Data_Sheet.xlsx" },
+    { "src": "/pds_template.docx", "dest": "/pds_template.docx" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
