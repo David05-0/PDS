@@ -2210,36 +2210,7 @@ async function fillDocxPDS(id) {
     setCell('C4', 'I47', yn(q.q40c));
     if (q.q40cId) setCell('C4', 'J48', q.q40cId);
 
-    // 41. REFERENCES — rows 52, 53, 54 (cols A=Name, F=Address, G=Contact)
-    refs.slice(0, 3).forEach((ref, i) => {
-      const row = 52 + i;
-      setCell('C4', `A${row}`, ref.name || '');
-      setCell('C4', `F${row}`, ref.address || '');
-      setCell('C4', `G${row}`, ref.contact || '');
-    });
 
-    // 42. GOV'T ID — rows 61-65
-    setCell('C4', 'D61', e.govtId || '');
-    setCell('C4', 'D62', e.govtIdNo || '');
-    setCell('C4', 'D64', e.govtIdIssuance || '');
-    setCell('C4', 'D65', fd(e.dateAccomplished) || fd(e.updatedAt) || '');
-
-    // ── Generate and download ─────────────────────────────────────────────────
-    const wbOut = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
-    const blob  = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url   = URL.createObjectURL(blob);
-    const a     = document.createElement('a');
-    a.href      = url;
-    a.download  = `PDS_${(pr.surname||'').toUpperCase()}_${(pr.firstName||'').toUpperCase()}_CS212_2025.xlsx`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 8000);
-    toast('Excel PDS downloaded! ✓', 'success');
-
-  } catch(err) {
-    console.error('Excel generation error:', err);
-    toast('Excel error: ' + err.message, 'error');
-  }
-}
 
 // ══════════ POPULATE SELECTS ══════════
 function popEmpSels() {
