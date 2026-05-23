@@ -101,7 +101,10 @@ function initApp() {
   role = currentUser.role;
   document.getElementById('adminNav').style.display = role === 'admin' ? 'block' : 'none';
   document.getElementById('empNav').style.display = role === 'employee' ? 'block' : 'none';
-  if (role === 'employee') currentEmpId = currentUser.empId || 'NEW';
+  if (role === 'employee') {
+    currentEmpId = currentUser.empId || 'NEW';
+    // If the empId from the user account isn't in employees yet, that's okay — renderMyPDS handles 'NEW'
+  }
   loadData();
   popEmpSels();
   document.getElementById('reportMonth').value = new Date().toISOString().slice(0,7);
@@ -389,7 +392,7 @@ function renderEmployees() {
       <td><div class="btn-group">
         <button class="btn btn-sm btn-blue" onclick="viewPDS('${e.id}')">View</button>
         <button class="btn btn-sm btn-outline" onclick="printPDS('${e.id}')">⬇ PDF</button>
-        <button class="btn btn-sm btn-green" onclick="fillExcelPDS('${e.id}')">📊 Excel</button>
+        <button class="btn btn-sm btn-green" onclick="fillDocxPDS('${e.id}')">📄 DOCX</button>
         ${e.status==='pending' ? `<button class="btn btn-sm btn-green" onclick="approvePDS('${e.id}')">✓</button><button class="btn btn-sm btn-red" onclick="rejectPDS('${e.id}')">↩</button>` : ''}
         <button class="btn btn-sm btn-outline" onclick="editPDS('${e.id}')">✏ Edit</button>
       </div></td>
@@ -407,7 +410,7 @@ function viewPDS(id) {
   document.getElementById('pdsViewActions').innerHTML = `
     <button class="btn btn-outline" onclick="navigate('employees')">← Back</button>
     <button class="btn btn-primary" onclick="printPDS('${id}')">⬇ Download PDF</button>
-    <button class="btn btn-green" onclick="fillExcelPDS('${id}')">📊 Download Excel</button>
+    <button class="btn btn-green" onclick="fillDocxPDS('${id}')">📄 Download DOCX</button>
     <button class="btn btn-outline" onclick="editPDS('${id}')">✏ Edit</button>
     ${e.status==='pending' ? `<button class="btn btn-green" onclick="approvePDS('${id}');viewPDS('${id}')">✓ Approve</button><button class="btn btn-red" onclick="rejectPDS('${id}');viewPDS('${id}')">↩ Return</button>` : ''}`;
   const tr = empTr(id);
@@ -775,8 +778,13 @@ function collectForm() {
 function cancelForm() { editingPDS = null; navigate(role === 'admin' ? 'employees' : 'myPDS'); }
 function saveDraft() {
   collectForm(); const p = editingPDS; p.updatedAt = new Date().toISOString().slice(0,10);
-  if (!p.id) { p.id = newEmpId(); employees.push(p); }
-  else { const i = employees.findIndex(e => e.id === p.id); if (i >= 0) employees[i] = p; }
+  if (!p.id) {
+    p.id = (currentUser && currentUser.empId && currentUser.empId !== 'NEW') ? currentUser.empId : newEmpId();
+    employees.push(p);
+  } else {
+    const i = employees.findIndex(e => e.id === p.id); if (i >= 0) employees[i] = p; else employees.push(p);
+  }
+  if (currentUser && role === 'employee') { currentUser.empId = p.id; currentEmpId = p.id; }
   saveData(); popEmpSels(); toast('Draft saved.'); navigate(role === 'admin' ? 'employees' : 'myPDS');
 }
 function adminSave() {
@@ -789,8 +797,16 @@ function submitPDS() {
   collectForm(); const p = editingPDS;
   if (!p.personal.surname || !p.personal.firstName) { toast('Please fill in at least Surname and First Name.', 'error'); return; }
   p.status = 'pending'; p.submittedAt = new Date().toISOString().slice(0,10); p.updatedAt = p.submittedAt;
-  if (!p.id) { p.id = newEmpId(); employees.push(p); }
-  else { const i = employees.findIndex(e => e.id === p.id); if (i >= 0) employees[i] = p; }
+  if (!p.id) {
+    // Try to use currentUser.empId if set, otherwise generate new
+    p.id = (currentUser && currentUser.empId && currentUser.empId !== 'NEW') ? currentUser.empId : newEmpId();
+    employees.push(p);
+  } else {
+    const i = employees.findIndex(e => e.id === p.id);
+    if (i >= 0) employees[i] = p; else employees.push(p);
+  }
+  // Keep currentEmpId in sync so My PDS renders after submit
+  if (currentUser) { currentUser.empId = p.id; currentEmpId = p.id; }
   saveData(); editingPDS = null; popEmpSels(); toast('PDS submitted to admin! ✓'); navigate('myPDS');
 }
 
@@ -892,46 +908,139 @@ function printReport() {
 // ══════════ MY PDS ══════════
 function renderMyPDS() {
   const content = document.getElementById('myPDSContent');
-  if (currentEmpId === 'NEW' || !employees.find(e => e.id === currentEmpId)) {
-    const emp = employees.find(e => e.id === currentEmpId);
-    if (!emp) {
-      content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`;
-      return;
-    }
-  }
   const emp = employees.find(e => e.id === currentEmpId);
-  if (!emp) { content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`; return; }
+  if (!emp) {
+    content.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No PDS on File</h3><p>Create and submit your Personal Data Sheet to your administrator for review.</p><button class="btn btn-primary" onclick="openMyNew()">+ Create My PDS</button></div>`;
+    return;
+  }
   const tr = empTr(emp.id);
-  const ir = (lbl, val) => `<div class="iitem"><div class="lbl">${lbl}</div><div class="val">${val ? esc(val) : '<span style="color:var(--gray-400);font-style:italic;font-weight:400">—</span>'}</div></div>`;
-  const sec = (t, b) => `<div class="vsec"><div class="vsec-title">${t}</div>${b}</div>`;
+  const ir = (lbl, val) => `<div class="iitem"><div class="lbl">${lbl}</div><div class="val">${val ? esc(String(val)) : '<span style="color:var(--gray-400);font-style:italic;font-weight:400">—</span>'}</div></div>`;
+  const sec = (icon, t, b) => `<div class="vsec"><div class="vsec-title">${icon} ${t}</div>${b}</div>`;
   const tbl = (hs, rows) => `<table><thead><tr>${hs.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+  const yn = v => v ? '<span style="color:var(--red);font-weight:700">YES</span>' : '<span style="color:var(--green);font-weight:700">NO</span>';
+  const fam = emp.family || {};
+  const q = emp.questions || {};
+  const refs = emp.references || [];
+
   content.innerHTML = `
     <div class="my-banner">
       <div>
-        <div style="font-size:18px;font-weight:700;color:var(--navy)">${esc(emp.personal.surname)}, ${esc(emp.personal.firstName)} ${esc(emp.personal.middleName)}</div>
+        <div style="font-size:18px;font-weight:700;color:var(--navy)">${esc(emp.personal.surname)}, ${esc(emp.personal.firstName)}${emp.personal.middleName ? ' ' + esc(emp.personal.middleName) : ''}${emp.personal.nameExt ? ' ' + esc(emp.personal.nameExt) : ''}</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:3px">${esc(emp.position)} · ${esc(emp.department)}</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Employee ID: <span style="font-family:'IBM Plex Mono',monospace;font-weight:600">${esc(emp.id)}</span> &nbsp;·&nbsp; Last updated: ${fmt(emp.updatedAt)}</div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         ${sbadge(emp.status)}
-        ${emp.status==='rejected' ? '<span style="font-size:12px;padding:6px 12px;border-radius:6px;background:var(--red-light);color:var(--red);font-weight:500">⚠ Returned by Admin. Please update and resubmit.</span>' : ''}
-        <button class="btn btn-primary" onclick="openMyEdit('${emp.id}')">✏ Edit &amp; Submit PDS</button>
+        ${emp.status==='rejected' ? '<span style="font-size:12px;padding:6px 12px;border-radius:6px;background:var(--red-light);color:var(--red);font-weight:500">⚠ Returned by Admin — please update and resubmit.</span>' : ''}
+        ${emp.status==='pending' ? '<span style="font-size:12px;padding:6px 12px;border-radius:6px;background:var(--amber-light);color:var(--amber);font-weight:500">⏳ Awaiting admin review.</span>' : ''}
+        ${emp.status==='approved' ? '<span style="font-size:12px;padding:6px 12px;border-radius:6px;background:var(--green-light);color:var(--green);font-weight:500">✓ PDS approved.</span>' : ''}
+        <button class="btn btn-primary" onclick="openMyEdit('${emp.id}')">✏ Edit &amp; ${emp.status==='draft'||emp.status==='rejected'?'Submit':'Update'} PDS</button>
         <button class="btn btn-outline" onclick="printPDS('${emp.id}')">⬇ Download PDF</button>
-        <button class="btn btn-green" onclick="fillExcelPDS('${emp.id}')">📊 Download Excel</button>
+        <button class="btn btn-green" onclick="fillDocxPDS('${emp.id}')">📄 Download DOCX</button>
       </div>
     </div>
     <div class="pds-view">
-      ${sec('I. Personal Information', `<div class="info-grid">
-        ${ir('Surname',emp.personal.surname)}${ir('First Name',emp.personal.firstName)}${ir('Middle Name',emp.personal.middleName)}
-        ${ir('Date of Birth',emp.personal.dob)}${ir('Place of Birth',emp.personal.pob)}${ir('Sex',emp.personal.sex)}
-        ${ir('Civil Status',emp.personal.civil)}${ir('Mobile',emp.personal.mobileNo)}${ir('Email',emp.personal.email)}
+      ${sec('👤','I. Personal Information', `<div class="info-grid">
+        ${ir('Surname',emp.personal.surname)}${ir('First Name',emp.personal.firstName)}${ir('Middle Name',emp.personal.middleName)}${ir('Name Extension',emp.personal.nameExt)}
+        ${ir('Date of Birth',emp.personal.dob)}${ir('Place of Birth',emp.personal.pob)}${ir('Sex at Birth',emp.personal.sex)}${ir('Civil Status',emp.personal.civil)}
+        ${ir('Height (m)',emp.personal.height)}${ir('Weight (kg)',emp.personal.weight)}${ir('Blood Type',emp.personal.blood)}${ir('Citizenship',emp.personal.citizenship)}
+        ${ir('UMID ID No.',emp.personal.umid)}${ir('Pag-IBIG ID No.',emp.personal.pagibig)}${ir('PhilHealth No.',emp.personal.philhealth)}${ir('PhilSys No. (PSN)',emp.personal.philsys)}
+        ${ir('TIN No.',emp.personal.tin)}${ir('Agency Employee No.',emp.personal.agencyNo)}${ir('Telephone No.',emp.personal.telNo)}${ir('Mobile No.',emp.personal.mobileNo)}
+        ${ir('E-mail Address',emp.personal.email)}
+      </div>
+      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:6px">17. Residential Address</div>
+          <div style="font-size:12.5px;line-height:1.8;color:var(--text)">${[emp.personal.residHouseNo,emp.personal.residStreet,emp.personal.residSubdiv,emp.personal.residBrgy,emp.personal.residCity,emp.personal.residProv].filter(Boolean).join(', ')||'—'}<br>ZIP: ${esc(emp.personal.residZip||'—')}</div>
+        </div>
+        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:6px">18. Permanent Address</div>
+          <div style="font-size:12.5px;line-height:1.8;color:var(--text)">${[emp.personal.permHouseNo,emp.personal.permStreet,emp.personal.permSubdiv,emp.personal.permBrgy,emp.personal.permCity,emp.personal.permProv].filter(Boolean).join(', ')||'—'}<br>ZIP: ${esc(emp.personal.permZip||'—')}</div>
+        </div>
       </div>`)}
-      ${sec('III. Education', emp.education.length ? tbl(['Level','School','Course','Period','Year Grad','Honors'], emp.education.map(r=>`<tr><td>${esc(r.level)}</td><td>${esc(r.school)}</td><td>${esc(r.course)}</td><td>${esc(r.from)}–${esc(r.to)}</td><td>${esc(r.yearGrad)||'N/A'}</td><td>${esc(r.honors)||'—'}</td></tr>`).join('')) : '<p class="empty-note">No records.</p>')}
-      ${sec('V. Work Experience', emp.workExp.length ? tbl(['From','To','Position','Department','Status'], emp.workExp.map(r=>`<tr><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="font-weight:500">${esc(r.position)}</td><td>${esc(r.dept)}</td><td>${esc(r.status)}</td></tr>`).join('')) : '<p class="empty-note">No records.</p>')}
-      ${sec('VII. Training/L&D', tr.length ? tbl(['Title','From','To','Hours','Type','Conducted By'], tr.map(t=>`<tr><td style="font-weight:500">${esc(t.title)}</td><td>${esc(t.from)}</td><td>${esc(t.to)}</td><td>${esc(t.hours)}</td><td><span class="badge badge-tech">${esc(t.type)}</span></td><td>${esc(t.conductedBy)}</td></tr>`).join('')) : '<p class="empty-note">No training records on file yet.</p>')}
-      ${sec('VIII. Other Info', `<div class="info-grid">${ir('Skills/Hobbies',emp.otherInfo.skills)}${ir('Distinctions',emp.otherInfo.distinctions)}${ir('Memberships',emp.otherInfo.memberships)}</div>`)}
+
+      ${sec('👨‍👩‍👧','II. Family Background', `<div class="info-grid">
+        <div style="grid-column:span 4;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:4px">22. Spouse</div>
+        ${ir('Surname',fam.spouseSurname)}${ir('First Name',fam.spouseFirstName)}${ir('Middle Name',fam.spouseMiddleName)}${ir('Name Extension',fam.spouseExt)}
+        ${ir('Occupation',fam.spouseOccupation)}${ir('Employer/Business Name',fam.spouseEmployer)}${ir('Business Address',fam.spouseBusiness)}${ir('Telephone No.',fam.spouseTel)}
+        <div style="grid-column:span 4;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin:8px 0 4px">24. Father</div>
+        ${ir('Surname',fam.fatherSurname)}${ir('First Name',fam.fatherFirstName)}${ir('Middle Name',fam.fatherMiddleName)}${ir('Name Extension',fam.fatherExt)}
+        <div style="grid-column:span 4;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin:8px 0 4px">25. Mother's Maiden Name</div>
+        ${ir('Surname',fam.motherSurname)}${ir('First Name',fam.motherFirstName)}${ir('Middle Name',fam.motherMiddleName)}
+      </div>
+      ${(fam.children||[]).length ? `<div style="margin-top:12px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px">23. Children</div>${tbl(['Full Name','Date of Birth'],(fam.children||[]).map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.dob)}</td></tr>`).join(''))}</div>` : '<p class="empty-note" style="margin-top:8px">No children on record.</p>'}`)}
+
+      ${sec('🎓','III. Educational Background', emp.education.length ?
+        tbl(['Level','School','Course/Degree','From','To','Units Earned','Year Grad','Honors'],
+          emp.education.map(r=>`<tr><td style="font-weight:600">${esc(r.level)}</td><td>${esc(r.school)}</td><td>${esc(r.course)||'—'}</td><td>${esc(r.from)||'—'}</td><td>${esc(r.to)||'—'}</td><td>${esc(r.units)||'—'}</td><td>${esc(r.yearGrad)||'—'}</td><td>${esc(r.honors)||'—'}</td></tr>`).join(''))
+        : '<p class="empty-note">No education records.</p>')}
+
+      ${sec('📜','IV. Civil Service Eligibility', emp.eligibility.length ?
+        tbl(['Eligibility / Exam','Rating','Date of Exam/Conferment','Place','License No.','Valid Until'],
+          emp.eligibility.map(r=>`<tr><td style="font-weight:500">${esc(r.name)}</td><td>${esc(r.rating)||'N/A'}</td><td>${esc(r.dateConf)||'—'}</td><td>${esc(r.place)||'—'}</td><td>${esc(r.licNo)||'N/A'}</td><td>${esc(r.licValid)||'N/A'}</td></tr>`).join(''))
+        : '<p class="empty-note">No eligibility records.</p>')}
+
+      ${sec('💼','V. Work Experience', emp.workExp.length ?
+        tbl(['From','To','Position Title','Department / Agency / Company','Status','Gov\'t Service'],
+          emp.workExp.map(r=>`<tr><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="font-weight:500">${esc(r.position)}</td><td>${esc(r.dept)}</td><td>${esc(r.status)}</td><td style="text-align:center">${esc(r.govtService)}</td></tr>`).join(''))
+        : '<p class="empty-note">No work experience records.</p>')}
+
+      ${sec('🤝','VI. Voluntary Work / Civic Organizations', (emp.voluntaryWork||[]).length ?
+        tbl(['Organization & Address','From','To','No. of Hours','Position / Nature of Work'],
+          (emp.voluntaryWork||[]).map(r=>`<tr><td>${esc(r.org)}</td><td>${esc(r.from)}</td><td>${esc(r.to)}</td><td style="text-align:center">${esc(r.hours)}</td><td>${esc(r.position)}</td></tr>`).join(''))
+        : '<p class="empty-note">No voluntary work records.</p>')}
+
+      ${sec('📚','VII. Learning & Development (L&D) / Training Programs', tr.length ?
+        tbl(['Title of Training / L&D','From','To','Hours','Type','Conducted / Sponsored By'],
+          tr.map(t=>`<tr><td style="font-weight:500">${esc(t.title)}</td><td>${esc(t.from)}</td><td>${esc(t.to)}</td><td style="text-align:center">${esc(t.hours)}</td><td><span class="badge badge-tech">${esc(t.type)}</span></td><td>${esc(t.conductedBy)}</td></tr>`).join(''))
+        : '<p class="empty-note">No training records on file yet. Your admin will add these on your behalf.</p>')}
+
+      ${sec('ℹ️','VIII. Other Information', `<div class="info-grid">
+        ${ir('31. Special Skills &amp; Hobbies',(emp.otherInfo||{}).skills)}
+        ${ir('32. Non-Academic Distinctions / Recognition',(emp.otherInfo||{}).distinctions)}
+        ${ir('33. Membership in Association / Organization',(emp.otherInfo||{}).memberships)}
+      </div>`)}
+
+      ${sec('❓','IX. Declarations (Questions 34–40)', `<div style="display:grid;gap:8px">
+        ${[
+          ['34a','Are you related (3rd degree) to the appointing/recommending authority?',null],
+          ['34b','Are you related (4th degree) — for LGU Career Employees?',null],
+          ['35a','Have you ever been found guilty of any administrative offense?','q35aDet'],
+          ['35b','Have you been criminally charged before any court?','q35bDet'],
+          ['36','Have you ever been convicted of any crime?','q36Det'],
+          ['37','Have you ever been separated from the service?','q37Det'],
+          ['38a','Have you ever been a candidate in a national/local election (last year)?','q38aDet'],
+          ['38b','Have you resigned from gov\'t service within 3 months before the last election?','q38bDet'],
+          ['39','Have you acquired immigrant or permanent resident status in another country?','q39Det'],
+          ['40a','Are you a member of any indigenous group? (RA 8371)','q40aSpec'],
+          ['40b','Are you a person with disability? (RA 7277)','q40bId'],
+          ['40c','Are you a solo parent? (RA 11861)','q40cId'],
+        ].map(([k,lbl,detK]) => `<div class="decl-item" style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;font-size:12px;color:var(--text)">${lbl}</div>
+          <div>${yn(q['q'+k])}</div>
+          ${detK && q['q'+k] && q[detK] ? `<div style="flex-basis:100%;font-size:11px;color:var(--red-light);background:var(--red-light);border-radius:4px;padding:4px 8px;color:var(--red)">Details: ${esc(q[detK])}</div>` : ''}
+        </div>`).join('')}
+      </div>`)}
+
+      ${sec('📞','41. References', refs.filter(r=>r.name).length ?
+        tbl(['Name','Office / Residential Address','Contact No. / Email'],
+          refs.filter(r=>r.name).map(r=>`<tr><td style="font-weight:500">${esc(r.name)}</td><td>${esc(r.address)}</td><td>${esc(r.contact)}</td></tr>`).join(''))
+        : '<p class="empty-note">No references listed.</p>')}
+
+      ${sec('🪪','42. Government Issued ID', `<div class="info-grid">
+        ${ir('Government Issued ID',emp.govtId)}
+        ${ir('ID / License / Passport No.',emp.govtIdNo)}
+        ${ir('Date / Place of Issuance',emp.govtIdIssuance)}
+        ${ir('Date Accomplished',emp.dateAccomplished)}
+      </div>`)}
     </div>`;
 }
-function openMyNew() { editingPDS = blankPDS(); navigate('pdsForm'); renderPDSForm(); }
+function openMyNew() {
+  editingPDS = blankPDS();
+  // Pre-assign the employee's own ID so it saves back to the right record
+  if (currentUser && currentUser.empId && currentUser.empId !== 'NEW') {
+    editingPDS.id = currentUser.empId;
+  }
+  navigate('pdsForm'); renderPDSForm();
+}
 function openMyEdit(id) { editingPDS = JSON.parse(JSON.stringify(employees.find(e=>e.id===id)||blankPDS())); navigate('pdsForm'); renderPDSForm(); }
 
 // ══════════ PRINT PDS — HTML replica of CS Form 212 (Revised 2025) ══════════
@@ -942,565 +1051,928 @@ function printPDS(id) {
 
   const tr = empTr(id);
   const pr = e.personal;
-  const fam = e.family;
+  const fam = e.family || {};
   const q = e.questions || {};
-  const refs = (e.references && e.references.length >= 3)
-    ? e.references
+  const refs = (e.references && e.references.filter(r=>r&&r.name).length)
+    ? [...e.references, {name:'',address:'',contact:''},{name:'',address:'',contact:''},{name:'',address:'',contact:''}].slice(0,3)
     : [{name:'',address:'',contact:''},{name:'',address:'',contact:''},{name:'',address:'',contact:''}];
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-  const v   = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const yn  = b => (b===true||b==='Yes'||b==='Y');
+  // helpers
+  function fd(d) {
+    if (!d) return '';
+    const p = d.split('-');
+    if (p.length === 3 && p[0].length === 4) return `${p[2]}/${p[1]}/${p[0]}`;
+    return d;
+  }
+  function v(s) { return (s||'').toString().trim(); }
+  function box(checked) { return `<span style="display:inline-block;width:9px;height:9px;border:1px solid #333;text-align:center;line-height:9px;font-size:7px;font-weight:bold">${checked?'✓':''}</span>`; }
+  function yn(val) { return (val===true||val==='Y'||val==='Yes'||val==='yes') ? 'YES' : 'NO'; }
+  function ynBox(val) {
+    const yes = val===true||val==='Y'||val==='Yes';
+    return `${box(yes)} YES &nbsp; ${box(!yes)} NO`;
+  }
+  function row(lbl, val, opts={}) {
+    const h = opts.h || 18;
+    return `<tr><td class="lbl" style="height:${h}px">${lbl}</td><td class="val" style="height:${h}px">${v(val)}</td></tr>`;
+  }
 
-  const CSS = `
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 7.5pt; color: #000; background: #fff; }
-    .page { width: 216mm; min-height: 279mm; padding: 6mm 7mm; page-break-after: always; }
-    table { width: 100%; border-collapse: collapse; }
-    td, th { border: 1px solid #000; padding: 1.5px 3px; vertical-align: top; font-size: 7pt; }
-    .lbl { font-size: 6pt; color: #555; font-style: italic; display: block; }
-    .val { font-size: 7.5pt; font-weight: bold; min-height: 9pt; display:block; }
-    .sec-hdr { background: #003366; color: #fff; font-size: 7pt; font-weight: bold;
-               letter-spacing: 0.5px; padding: 2px 4px; }
-    .form-title { text-align:center; font-size:13pt; font-weight:bold;
-                  letter-spacing:2px; padding:4px 0 2px; }
-    .form-meta  { font-size:7pt; text-align:right; color:#333; }
-    .warn  { font-size:6.5pt; font-weight:bold; margin-bottom:2px; }
-    .note  { font-size:6.5pt; margin-bottom:3px; }
-    .nb { border:none; padding:1px 2px; vertical-align:top; }
-    .sig-row { min-height:20pt; }
-    @media print {
-      body { margin: 0; }
-      .no-print { display:none; }
-      .page { page-break-after: always; margin:0; padding: 6mm 7mm; }
-    }
-  `;
-
-  // ── education rows ────────────────────────────────────────────────────────────
-  const EDU_LEVELS = ['Elementary','Secondary','Vocational / Trade Course','College','Graduate Studies'];
-  const eduMap = {};
-  (e.education||[]).forEach(r => { eduMap[r.level] = r; });
-  const eduRows = EDU_LEVELS.map(lvl => {
-    const r = eduMap[lvl] || {};
-    return `<tr>
-      <td style="font-size:7pt;width:90px">${lvl}</td>
-      <td><span class="val">${v(r.school)}</span></td>
-      <td><span class="val">${v(r.course)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.from)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.to)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.units)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.yearGrad)}</span></td>
-      <td><span class="val">${v(r.honors)}</span></td>
+  // Build edu rows for each level
+  function eduRow(level) {
+    const ed = (e.education||[]).find(x=>x.level&&x.level.toLowerCase().startsWith(level.toLowerCase()));
+    return `<tr style="height:22px">
+      <td class="val" style="font-size:7pt">${ed?v(ed.school):''}</td>
+      <td class="val" style="font-size:7pt">${ed?v(ed.course):''}</td>
+      <td class="val" style="font-size:7pt;text-align:center">${ed?v(ed.from):''}</td>
+      <td class="val" style="font-size:7pt;text-align:center">${ed?v(ed.to):''}</td>
+      <td class="val" style="font-size:7pt;text-align:center">${ed?v(ed.units):''}</td>
+      <td class="val" style="font-size:7pt;text-align:center">${ed?v(ed.yearGrad):''}</td>
+      <td class="val" style="font-size:7pt">${ed?v(ed.honors):''}</td>
     </tr>`;
-  }).join('');
+  }
 
-  // ── children rows ─────────────────────────────────────────────────────────────
-  const children = (fam.children && fam.children.length) ? fam.children : Array(4).fill({name:'',dob:''});
-  const childRows = children.slice(0,10).map(c =>
-    `<tr><td><span class="val">${v(c.name)}</span></td>` +
-    `<td style="text-align:center"><span class="val">${v(c.dob)}</span></td></tr>`
-  ).join('');
+  const w = window.open('','_blank','width=900,height=700');
 
-  // ── eligibility rows ──────────────────────────────────────────────────────────
-  const eligRows = (e.eligibility||[]).slice(0,9).map(r =>
-    `<tr>
-      <td><span class="val">${v(r.name)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.rating)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.dateConf)}</span></td>
-      <td><span class="val">${v(r.place)}</span></td>
-      <td><span class="val">${v(r.licNo)}</span></td>
-      <td style="text-align:center"><span class="val">${r.licValid==='N/A'?'N/A':v(r.licValid)}</span></td>
-    </tr>`).join('') ||
-    '<tr><td colspan="6" style="text-align:center;color:#999;font-style:italic">N/A</td></tr>';
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>PDS — ${v(pr.surname)}, ${v(pr.firstName)}</title>
+<style>
+  @page { size: A4 portrait; margin: 8mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 7.5pt; color: #000; background: #fff; }
+  .page { width: 100%; page-break-after: always; border: 1px solid #555; padding: 4px; }
+  .page:last-child { page-break-after: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border: 0.5px solid #444; padding: 1px 3px; vertical-align: top; }
+  .lbl { font-size: 6.5pt; color: #333; white-space: nowrap; background: #f7f7f7; width: 1%; }
+  .val { font-size: 8pt; font-weight: bold; }
+  .val-sm { font-size: 7pt; }
+  .sec-hdr { background: #1a3a6e; color: #fff; font-size: 7pt; font-weight: bold; padding: 2px 4px; letter-spacing: 0.5px; }
+  .form-title { text-align: center; font-size: 16pt; font-weight: 900; letter-spacing: 1px; padding: 4px 0 2px; }
+  .form-sub { text-align: center; font-size: 6.5pt; margin-bottom: 3px; }
+  .warn { font-size: 6pt; font-style: italic; margin-bottom: 2px; border: 0.5px solid #888; padding: 2px 4px; }
+  .no-border td, .no-border th { border: none; }
+  h-lbl { font-size: 6pt; color: #555; display: block; font-weight: normal; }
+  .chk-row { font-size: 7.5pt; }
+  .print-btn { position: fixed; top: 10px; right: 10px; padding: 8px 18px; background: #1a3a6e; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; z-index: 999; }
+  @media print { .print-btn { display: none; } .page { border: none; } }
+  .addr-lbl { font-size: 6pt; color: #555; font-style: italic; }
+</style>
+</head><body>
+<button class="print-btn" onclick="window.print()">🖨 Print / Save PDF</button>
 
-  // ── work experience rows ──────────────────────────────────────────────────────
-  const workRows = (e.workExp||[]).slice(0,28).map(r => {
-    const gs = (r.govtService==='Yes'||r.govtService==='Y') ? 'Y'
-             : (r.govtService==='No'||r.govtService==='N') ? 'N' : (r.govtService||'');
-    return `<tr>
-      <td style="text-align:center"><span class="val">${v(r.from)}</span></td>
-      <td style="text-align:center"><span class="val">${r.to==='Present'?'Present':v(r.to)}</span></td>
-      <td><span class="val">${v(r.position)}</span></td>
-      <td><span class="val">${v(r.dept)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.status)}</span></td>
-      <td style="text-align:center"><span class="val">${gs}</span></td>
-    </tr>`;
-  }).join('') ||
-  '<tr><td colspan="6" style="text-align:center;color:#999;font-style:italic">N/A</td></tr>';
-
-  // ── voluntary work rows ───────────────────────────────────────────────────────
-  const volRows = (e.voluntaryWork||[]).slice(0,7).map(r =>
-    `<tr>
-      <td><span class="val">${v(r.org||r.name)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.from)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.to)}</span></td>
-      <td style="text-align:center"><span class="val">${v(r.hours)}</span></td>
-      <td><span class="val">${v(r.position)}</span></td>
-    </tr>`).join('') ||
-  '<tr><td colspan="5" style="text-align:center;color:#999;font-style:italic">N/A</td></tr>';
-
-  // ── training rows ─────────────────────────────────────────────────────────────
-  const trRows = tr.slice(0,25).map(t =>
-    `<tr>
-      <td><span class="val">${v(t.title)}</span></td>
-      <td style="text-align:center"><span class="val">${v(t.from)}</span></td>
-      <td style="text-align:center"><span class="val">${v(t.to)}</span></td>
-      <td style="text-align:center"><span class="val">${v(t.hours)}</span></td>
-      <td style="text-align:center"><span class="val">${v(t.type)}</span></td>
-      <td><span class="val">${v(t.conductedBy)}</span></td>
-    </tr>`).join('') ||
-  '<tr><td colspan="6" style="text-align:center;color:#999;font-style:italic">N/A</td></tr>';
-
-  // ── other info rows ───────────────────────────────────────────────────────────
-  const skillLines = ((e.otherInfo||{}).skills||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
-  const distLines  = ((e.otherInfo||{}).distinctions||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
-  const membLines  = ((e.otherInfo||{}).memberships||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
-  const maxOI = Math.max(skillLines.length, distLines.length, membLines.length, 3);
-  const otherRows = Array.from({length:maxOI}, (_,i) =>
-    `<tr>
-      <td><span class="val">${v(skillLines[i])}</span></td>
-      <td><span class="val">${v(distLines[i])}</span></td>
-      <td><span class="val">${v(membLines[i])}</span></td>
-    </tr>`).join('');
-
-  // ── declaration row helper ────────────────────────────────────────────────────
-  const declRow = (num, text, boolVal, detail, extras) => {
-    const isYes = yn(boolVal);
-    const extrasHtml = extras ? extras.map(x=>`<div style="font-size:6.5pt">${v(x)}</div>`).join('') : '';
-    return `<tr>
-      <td style="width:55%"><b>${num}.</b> ${text}</td>
-      <td style="text-align:center;width:6%">${isYes?'&#9745;':'&#9744;'} YES</td>
-      <td style="text-align:center;width:6%">${!isYes?'&#9745;':'&#9744;'} NO</td>
-      <td style="width:33%"><span class="val">${isYes&&detail?v(detail):''}</span>${extrasHtml}</td>
-    </tr>`;
-  };
-
-  const nameStr = `${pr.surname||''}, ${pr.firstName||''} ${pr.middleName||''}${pr.nameExt?' '+pr.nameExt:''}`.trim();
-  const cs = s => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>PDS - ${cs(nameStr)}</title>
-<style>${CSS}</style>
-</head>
-<body>
-
-<div class="no-print" style="position:fixed;top:0;left:0;right:0;background:#003366;color:#fff;padding:8px 16px;display:flex;align-items:center;gap:12px;z-index:9999;font-family:Arial,sans-serif;font-size:13px">
-  <span style="font-weight:bold">&#128203; CS Form 212 (Revised 2025) &mdash; ${cs(nameStr)}</span>
-  <button onclick="window.print()" style="margin-left:auto;background:#fff;color:#003366;border:none;padding:6px 18px;border-radius:4px;font-weight:bold;cursor:pointer;font-size:13px">&#128424; Print / Save as PDF</button>
-  <button onclick="window.close()" style="background:transparent;color:#fff;border:1px solid #fff;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:13px">&times; Close</button>
-</div>
-<div class="no-print" style="height:44px"></div>
-
-<!-- PAGE 1 -->
+<!-- ═══════════════════════ PAGE 1 ═══════════════════════ -->
 <div class="page">
-  <div class="form-meta">CS Form No. 212 &nbsp;|&nbsp; Revised 2025</div>
+  <div style="text-align:right;font-size:6pt;margin-bottom:1px">CS Form No. 212 &nbsp; Revised 2025</div>
   <div class="form-title">PERSONAL DATA SHEET</div>
-  <div class="warn">WARNING: Any misrepresentation made in the Personal Data Sheet and the Work Experience Sheet shall cause the filing of administrative/criminal case/s against the person concerned.</div>
-  <div class="note">READ THE ATTACHED GUIDE TO FILLING OUT THE PERSONAL DATA SHEET (PDS) BEFORE ACCOMPLISHING THE PDS FORM.<br>
-  Print legibly if accomplished through own handwriting. Tick appropriate boxes and use separate sheet if necessary. Indicate N/A if not applicable. <b>DO NOT ABBREVIATE.</b></div>
+  <div class="warn"><b>WARNING:</b> Any misrepresentation made in the Personal Data Sheet and the Work Experience Sheet shall cause the filing of administrative/criminal case/s against the person concerned.<br>
+  READ THE ATTACHED GUIDE TO FILLING OUT THE PERSONAL DATA SHEET (PDS) BEFORE ACCOMPLISHING THE PDS FORM.<br>
+  Print legibly if accomplished through own handwriting. Tick appropriate boxes (✓) and use separate sheet if necessary. Indicate N/A if not applicable. <b>DO NOT ABBREVIATE.</b></div>
 
-  <table>
+  <!-- PERSONAL INFO HEADER -->
+  <table style="margin-bottom:1px">
     <tr><td colspan="4" class="sec-hdr">I. PERSONAL INFORMATION</td></tr>
     <tr>
-      <td style="width:28%"><span class="lbl">1. SURNAME</span><span class="val">${v(pr.surname)}</span></td>
-      <td colspan="2"><span class="lbl">2. FIRST NAME</span><span class="val">${v(pr.firstName)}</span></td>
-      <td style="width:22%"><span class="lbl">NAME EXTENSION (JR., SR)</span><span class="val">${v(pr.nameExt)}</span></td>
-    </tr>
-    <tr><td colspan="4"><span class="lbl">MIDDLE NAME</span><span class="val">${v(pr.middleName)}</span></td></tr>
-    <tr>
-      <td><span class="lbl">3. DATE OF BIRTH (dd/mm/yyyy)</span><span class="val">${v(pr.dob)}</span></td>
-      <td colspan="2" rowspan="3" style="vertical-align:top">
-        <span class="lbl">16. CITIZENSHIP</span>
-        <div>${!pr.dualCitizenship?'&#9745;':'&#9744;'} Filipino &nbsp;&nbsp; ${pr.dualCitizenship?'&#9745;':'&#9744;'} Dual Citizenship</div>
-        ${pr.dualCitizenship?`<div style="font-size:6.5pt">Country: ${v(pr.dualCountry)}</div>`:''}
-      </td>
-      <td rowspan="3" style="vertical-align:top">
-        <span class="lbl">If dual citizenship, indicate country:</span>
-        <span class="val">${pr.dualCitizenship?v(pr.dualCountry):''}</span>
-      </td>
-    </tr>
-    <tr><td><span class="lbl">4. PLACE OF BIRTH</span><span class="val">${v(pr.pob)}</span></td></tr>
-    <tr>
-      <td>
-        <span class="lbl">5. SEX AT BIRTH</span>
-        ${pr.sex==='Male'?'&#9745;':'&#9744;'} Male &nbsp; ${pr.sex==='Female'?'&#9745;':'&#9744;'} Female
+      <td class="lbl" style="width:110px">1. SURNAME</td>
+      <td class="val" colspan="2" style="font-size:9pt;font-weight:900">${v(pr.surname)}</td>
+      <td style="width:160px">
+        <div class="lbl">NAME EXTENSION (JR., SR)</div>
+        <div class="val">${v(pr.nameExt)}</div>
       </td>
     </tr>
     <tr>
-      <td rowspan="2" style="vertical-align:top">
-        <span class="lbl">6. CIVIL STATUS</span>
-        <div>${pr.civil==='Single'?'&#9745;':'&#9744;'} Single &nbsp; ${pr.civil==='Married'?'&#9745;':'&#9744;'} Married</div>
-        <div>${(pr.civil==='Widowed'||pr.civil==='Widow/er')?'&#9745;':'&#9744;'} Widowed &nbsp; ${pr.civil==='Separated'?'&#9745;':'&#9744;'} Separated</div>
-        <div>${!['Single','Married','Widowed','Widow/er','Separated'].includes(pr.civil)?'&#9745;':'&#9744;'} Other/s: <span class="val" style="display:inline">${!['Single','Married','Widowed','Widow/er','Separated'].includes(pr.civil)&&pr.civil?v(pr.civil):''}</span></div>
-      </td>
-      <td colspan="3" style="vertical-align:top">
-        <span class="lbl">17. RESIDENTIAL ADDRESS</span>
-        <table style="border:none"><tr>
-          <td class="nb" style="width:40%"><span class="lbl">House/Block/Lot No.</span><span class="val">${v(pr.residHouseNo)}</span></td>
-          <td class="nb"><span class="lbl">Street</span><span class="val">${v(pr.residStreet)}</span></td>
-        </tr><tr>
-          <td class="nb"><span class="lbl">Subdivision/Village</span><span class="val">${v(pr.residSubdiv)}</span></td>
-          <td class="nb"><span class="lbl">Barangay</span><span class="val">${v(pr.residBrgy)}</span></td>
-        </tr><tr>
-          <td class="nb"><span class="lbl">City/Municipality</span><span class="val">${v(pr.residCity)}</span></td>
-          <td class="nb"><span class="lbl">Province</span><span class="val">${v(pr.residProv)}</span></td>
-        </tr><tr>
-          <td colspan="2" class="nb"><span class="lbl">ZIP CODE</span><span class="val">${v(pr.residZip)}</span></td>
-        </tr></table>
-      </td>
+      <td class="lbl">2. FIRST NAME</td>
+      <td class="val" colspan="2" style="font-size:9pt;font-weight:900">${v(pr.firstName)}</td>
+      <td>&nbsp;</td>
     </tr>
     <tr>
-      <td colspan="3" style="vertical-align:top">
-        <span class="lbl">18. PERMANENT ADDRESS</span>
-        <table style="border:none"><tr>
-          <td class="nb" style="width:40%"><span class="lbl">House/Block/Lot No.</span><span class="val">${v(pr.permHouseNo)}</span></td>
-          <td class="nb"><span class="lbl">Street</span><span class="val">${v(pr.permStreet)}</span></td>
-        </tr><tr>
-          <td class="nb"><span class="lbl">Subdivision/Village</span><span class="val">${v(pr.permSubdiv)}</span></td>
-          <td class="nb"><span class="lbl">Barangay</span><span class="val">${v(pr.permBrgy)}</span></td>
-        </tr><tr>
-          <td class="nb"><span class="lbl">City/Municipality</span><span class="val">${v(pr.permCity)}</span></td>
-          <td class="nb"><span class="lbl">Province</span><span class="val">${v(pr.permProv)}</span></td>
-        </tr><tr>
-          <td colspan="2" class="nb"><span class="lbl">ZIP CODE</span><span class="val">${v(pr.permZip)}</span></td>
-        </tr></table>
-      </td>
+      <td class="lbl">&nbsp;&nbsp;&nbsp;MIDDLE NAME</td>
+      <td class="val" colspan="3" style="font-size:9pt;font-weight:900">${v(pr.middleName)}</td>
     </tr>
-    <tr>
-      <td><span class="lbl">7. HEIGHT (m)</span><span class="val">${v(pr.height)}</span></td>
-      <td><span class="lbl">19. TELEPHONE NO.</span><span class="val">${v(pr.telNo)}</span></td>
-      <td colspan="2"><span class="lbl">20. MOBILE NO.</span><span class="val">${v(pr.mobileNo)}</span></td>
-    </tr>
-    <tr>
-      <td><span class="lbl">8. WEIGHT (kg)</span><span class="val">${v(pr.weight)}</span></td>
-      <td colspan="3"><span class="lbl">21. E-MAIL ADDRESS (if any)</span><span class="val">${v(pr.email)}</span></td>
-    </tr>
-    <tr><td><span class="lbl">9. BLOOD TYPE</span><span class="val">${v(pr.blood)}</span></td><td colspan="3" rowspan="6"></td></tr>
-    <tr><td><span class="lbl">10. UMID ID NO.</span><span class="val">${v(pr.umid)}</span></td></tr>
-    <tr><td><span class="lbl">11. PAG-IBIG ID NO.</span><span class="val">${v(pr.pagibig)}</span></td></tr>
-    <tr><td><span class="lbl">12. PHILHEALTH NO.</span><span class="val">${v(pr.philhealth)}</span></td></tr>
-    <tr><td><span class="lbl">13. PhilSys Number (PSN)</span><span class="val">${v(pr.philsys)}</span></td></tr>
-    <tr><td><span class="lbl">14. TIN NO.</span><span class="val">${v(pr.tin)}</span></td></tr>
-    <tr><td><span class="lbl">15. AGENCY EMPLOYEE NO.</span><span class="val">${v(pr.agencyNo)}</span></td><td colspan="3"></td></tr>
   </table>
 
-  <table style="margin-top:2px">
-    <tr><td colspan="6" class="sec-hdr">II. FAMILY BACKGROUND</td></tr>
+  <!-- TWO-COLUMN: LEFT (personal fields) RIGHT (citizenship + address) -->
+  <table>
     <tr>
-      <td colspan="3" style="vertical-align:top">
-        <span class="lbl">22. SPOUSE'S SURNAME</span><span class="val">${v(fam.spouseSurname)}</span>
-        <span class="lbl">FIRST NAME</span><span class="val">${v(fam.spouseFirstName)}</span>
-        <span class="lbl">MIDDLE NAME</span><span class="val">${v(fam.spouseMiddleName)}</span>
-        <span class="lbl">NAME EXTENSION</span><span class="val">${v(fam.spouseExt)}</span>
-        <span class="lbl">OCCUPATION</span><span class="val">${v(fam.spouseOccupation)}</span>
-        <span class="lbl">EMPLOYER/BUSINESS NAME</span><span class="val">${v(fam.spouseEmployer)}</span>
-        <span class="lbl">BUSINESS ADDRESS</span><span class="val">${v(fam.spouseBusiness)}</span>
-        <span class="lbl">TELEPHONE NO.</span><span class="val">${v(fam.spouseTel)}</span>
+      <!-- LEFT PERSONAL FIELDS -->
+      <td style="width:50%;vertical-align:top;border:none;padding:0">
+        <table>
+          <tr>
+            <td class="lbl" style="width:130px">3. DATE OF BIRTH (dd/mm/yyyy)</td>
+            <td class="val">${fd(pr.dob)}</td>
+          </tr>
+          <tr>
+            <td class="lbl">4. PLACE OF BIRTH</td>
+            <td class="val">${v(pr.pob)}</td>
+          </tr>
+          <tr>
+            <td class="lbl">5. SEX AT BIRTH</td>
+            <td class="val chk-row">${box(pr.sex==='Male')} Male &nbsp;&nbsp; ${box(pr.sex==='Female')} Female</td>
+          </tr>
+          <tr>
+            <td class="lbl">6. CIVIL STATUS</td>
+            <td class="val chk-row">
+              ${box(pr.civil==='Single')} Single &nbsp;
+              ${box(pr.civil==='Married')} Married &nbsp;
+              ${box(pr.civil==='Widow/er'||pr.civil==='Widowed')} Widowed<br>
+              ${box(pr.civil==='Separated')} Separated &nbsp;
+              ${box(!['Single','Married','Widow/er','Widowed','Separated'].includes(pr.civil)&&!!pr.civil)} Other/s:
+              ${!['Single','Married','Widow/er','Widowed','Separated'].includes(pr.civil)?v(pr.civil):''}
+            </td>
+          </tr>
+          <tr><td class="lbl">7. HEIGHT (m)</td><td class="val">${v(pr.height)}</td></tr>
+          <tr><td class="lbl">8. WEIGHT (kg)</td><td class="val">${v(pr.weight)}</td></tr>
+          <tr><td class="lbl">9. BLOOD TYPE</td><td class="val">${v(pr.blood)}</td></tr>
+          <tr><td class="lbl">10. UMID ID NO.</td><td class="val">${v(pr.umid)}</td></tr>
+          <tr><td class="lbl">11. PAG-IBIG ID NO.</td><td class="val">${v(pr.pagibig)}</td></tr>
+          <tr><td class="lbl">12. PHILHEALTH NO.</td><td class="val">${v(pr.philhealth)}</td></tr>
+          <tr><td class="lbl">13. PhilSys Number (PSN)</td><td class="val">${v(pr.philsys)}</td></tr>
+          <tr><td class="lbl">14. TIN NO.</td><td class="val">${v(pr.tin)}</td></tr>
+          <tr><td class="lbl">15. AGENCY EMPLOYEE NO.</td><td class="val">${v(pr.agencyNo)}</td></tr>
+        </table>
       </td>
-      <td colspan="3" style="vertical-align:top">
-        <span class="lbl">23. NAME of CHILDREN (Write full name and list all)</span>
-        <table style="margin-top:2px">
-          <tr><th style="font-size:6pt">FULL NAME</th><th style="font-size:6pt;width:30%">DATE OF BIRTH</th></tr>
-          ${childRows}
+      <!-- RIGHT: Citizenship + Addresses + Contact -->
+      <td style="width:50%;vertical-align:top;border:none;padding:0">
+        <table>
+          <tr>
+            <td class="lbl" style="width:90px">16. CITIZENSHIP</td>
+            <td class="val chk-row">
+              ${box(!pr.dualCitizenship)} Filipino &nbsp;
+              ${box(!!pr.dualCitizenship)} Dual Citizenship<br>
+              <span style="font-size:6pt">${box(pr.dualCitizenship&&pr.dualHow==='birth')} by birth &nbsp;
+              ${box(pr.dualCitizenship&&pr.dualHow==='naturalization')} by naturalization</span><br>
+              ${pr.dualCitizenship?`<span style="font-size:6.5pt">Country: <b>${v(pr.dualCountry)}</b></span>`:''}
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding:0">
+              <table>
+                <tr><td colspan="2" class="lbl" style="background:#e8e8e8">17. RESIDENTIAL ADDRESS</td></tr>
+                <tr>
+                  <td style="width:50%">
+                    <div class="addr-lbl">House/Block/Lot No.</div>
+                    <div class="val">${v(pr.residHouseNo)}</div>
+                  </td>
+                  <td>
+                    <div class="addr-lbl">Street</div>
+                    <div class="val">${v(pr.residStreet)}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="addr-lbl">Subdivision/Village</div>
+                    <div class="val">${v(pr.residSubdiv)}</div>
+                  </td>
+                  <td>
+                    <div class="addr-lbl">Barangay</div>
+                    <div class="val">${v(pr.residBrgy)}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="addr-lbl">City/Municipality</div>
+                    <div class="val">${v(pr.residCity)}</div>
+                  </td>
+                  <td>
+                    <div class="addr-lbl">Province</div>
+                    <div class="val">${v(pr.residProv)}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="lbl">ZIP CODE</td>
+                  <td class="val">${v(pr.residZip)}</td>
+                </tr>
+                <tr><td colspan="2" class="lbl" style="background:#e8e8e8">18. PERMANENT ADDRESS</td></tr>
+                <tr>
+                  <td>
+                    <div class="addr-lbl">House/Block/Lot No.</div>
+                    <div class="val">${v(pr.permHouseNo)}</div>
+                  </td>
+                  <td>
+                    <div class="addr-lbl">Street</div>
+                    <div class="val">${v(pr.permStreet)}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="addr-lbl">Subdivision/Village</div>
+                    <div class="val">${v(pr.permSubdiv)}</div>
+                  </td>
+                  <td>
+                    <div class="addr-lbl">Barangay</div>
+                    <div class="val">${v(pr.permBrgy)}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="addr-lbl">City/Municipality</div>
+                    <div class="val">${v(pr.permCity)}</div>
+                  </td>
+                  <td>
+                    <div class="addr-lbl">Province</div>
+                    <div class="val">${v(pr.permProv)}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="lbl">ZIP CODE</td>
+                  <td class="val">${v(pr.permZip)}</td>
+                </tr>
+                <tr><td class="lbl">19. TELEPHONE NO.</td><td class="val">${v(pr.telNo)}</td></tr>
+                <tr><td class="lbl">20. MOBILE NO.</td><td class="val">${v(pr.mobileNo)}</td></tr>
+                <tr><td class="lbl">21. E-MAIL ADDRESS (if any)</td><td class="val">${v(pr.email)}</td></tr>
+              </table>
+            </td>
+          </tr>
         </table>
       </td>
     </tr>
+  </table>
+
+  <!-- FAMILY BACKGROUND -->
+  <table style="margin-top:2px">
+    <tr><td colspan="6" class="sec-hdr">II. FAMILY BACKGROUND</td></tr>
     <tr>
-      <td colspan="3" style="vertical-align:top">
-        <span class="lbl">24. FATHER'S SURNAME</span><span class="val">${v(fam.fatherSurname)}</span>
-        <span class="lbl">FIRST NAME</span><span class="val">${v(fam.fatherFirstName)}</span>
-        <span class="lbl">MIDDLE NAME</span><span class="val">${v(fam.fatherMiddleName)}</span>
-        <span class="lbl">NAME EXTENSION</span><span class="val">${v(fam.fatherExt)}</span>
+      <!-- SPOUSE -->
+      <td style="width:50%;vertical-align:top;border:none;padding:0">
+        <table>
+          <tr><td class="lbl" style="width:140px">22. SPOUSE'S SURNAME</td><td class="val">${v(fam.spouseSurname)}</td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;FIRST NAME</td><td class="val">${v(fam.spouseFirstName)}&nbsp;<span style="font-size:6.5pt;font-weight:normal">${v(fam.spouseExt)}</span></td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;MIDDLE NAME</td><td class="val">${v(fam.spouseMiddleName)}</td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;OCCUPATION</td><td class="val">${v(fam.spouseOccupation)}</td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;EMPLOYER/BUSINESS NAME</td><td class="val">${v(fam.spouseEmployer)}</td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;BUSINESS ADDRESS</td><td class="val">${v(fam.spouseBusiness)}</td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;TELEPHONE NO.</td><td class="val">${v(fam.spouseTel)}</td></tr>
+          <tr><td class="lbl">24. FATHER'S SURNAME</td><td class="val">${v(fam.fatherSurname)}</td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;FIRST NAME</td><td class="val">${v(fam.fatherFirstName)}&nbsp;<span style="font-size:6.5pt;font-weight:normal">${v(fam.fatherExt)}</span></td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;MIDDLE NAME</td><td class="val">${v(fam.fatherMiddleName)}</td></tr>
+          <tr><td class="lbl">25. MOTHER'S MAIDEN NAME</td><td class="val"></td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;SURNAME</td><td class="val">${v(fam.motherSurname)}</td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;FIRST NAME</td><td class="val">${v(fam.motherFirstName)}</td></tr>
+          <tr><td class="lbl">&nbsp;&nbsp;&nbsp;MIDDLE NAME</td><td class="val">${v(fam.motherMiddleName)}</td></tr>
+        </table>
       </td>
-      <td colspan="3" style="vertical-align:top">
-        <span class="lbl">25. MOTHER'S MAIDEN NAME</span>
-        <span class="lbl">SURNAME</span><span class="val">${v(fam.motherSurname)}</span>
-        <span class="lbl">FIRST NAME</span><span class="val">${v(fam.motherFirstName)}</span>
-        <span class="lbl">MIDDLE NAME</span><span class="val">${v(fam.motherMiddleName)}</span>
+      <!-- CHILDREN -->
+      <td style="width:50%;vertical-align:top;border:none;padding:0">
+        <table>
+          <tr>
+            <th class="lbl" style="text-align:left">23. NAME of CHILDREN (Write full name and list all)</th>
+            <th class="lbl" style="width:90px;text-align:center">DATE OF BIRTH (dd/mm/yyyy)</th>
+          </tr>
+          ${(fam.children||[]).map(c=>`<tr style="height:16px"><td class="val" style="font-size:7.5pt">${v(c.name)}</td><td class="val" style="font-size:7.5pt;text-align:center">${fd(c.dob)}</td></tr>`).join('')}
+          ${Array.from({length:Math.max(0,10-(fam.children||[]).length)},()=>`<tr style="height:16px"><td class="val">&nbsp;</td><td class="val">&nbsp;</td></tr>`).join('')}
+        </table>
       </td>
     </tr>
   </table>
 
+  <!-- EDUCATION -->
   <table style="margin-top:2px">
-    <tr><td colspan="8" class="sec-hdr">III. EDUCATIONAL BACKGROUND</td></tr>
+    <tr><td colspan="7" class="sec-hdr">III. EDUCATIONAL BACKGROUND</td></tr>
     <tr>
-      <th style="font-size:6pt">26. LEVEL</th>
-      <th style="font-size:6pt">NAME OF SCHOOL (Write in full)</th>
-      <th style="font-size:6pt">BASIC EDUCATION/DEGREE/COURSE</th>
-      <th style="font-size:6pt">From</th>
-      <th style="font-size:6pt">To</th>
-      <th style="font-size:6pt">HIGHEST LEVEL/UNITS EARNED</th>
-      <th style="font-size:6pt">YEAR GRADUATED</th>
-      <th style="font-size:6pt">SCHOLARSHIP/ACADEMIC HONORS</th>
+      <th class="lbl" style="width:12%">26. LEVEL</th>
+      <th class="lbl" style="width:22%">NAME OF SCHOOL (Write in full)</th>
+      <th class="lbl" style="width:22%">BASIC EDUCATION/DEGREE/COURSE (Write in full)</th>
+      <th class="lbl" style="width:8%;text-align:center">From</th>
+      <th class="lbl" style="width:8%;text-align:center">To</th>
+      <th class="lbl" style="width:12%;text-align:center">HIGHEST LEVEL/UNITS EARNED (if not graduated)</th>
+      <th class="lbl" style="width:8%;text-align:center">YEAR GRADUATED</th>
+      <th class="lbl" style="width:8%;text-align:center">SCHOLARSHIP/ ACADEMIC HONORS RECEIVED</th>
     </tr>
-    ${eduRows}
+    ${'<tr style="height:22px"><td class="lbl" style="font-size:7pt;font-weight:bold">ELEMENTARY</td>'+eduRow('Elementary').replace('<tr style="height:22px">','').replace('</tr>','')+'</tr>'}
+    ${'<tr style="height:22px"><td class="lbl" style="font-size:7pt;font-weight:bold">SECONDARY</td>'+eduRow('Secondary').replace('<tr style="height:22px">','').replace('</tr>','')+'</tr>'}
+    ${'<tr style="height:22px"><td class="lbl" style="font-size:7pt;font-weight:bold">VOCATIONAL / TRADE COURSE</td>'+eduRow('Vocational').replace('<tr style="height:22px">','').replace('</tr>','')+'</tr>'}
+    ${'<tr style="height:22px"><td class="lbl" style="font-size:7pt;font-weight:bold">COLLEGE</td>'+eduRow('College').replace('<tr style="height:22px">','').replace('</tr>','')+'</tr>'}
+    ${'<tr style="height:22px"><td class="lbl" style="font-size:7pt;font-weight:bold">GRADUATE STUDIES</td>'+eduRow('Graduate').replace('<tr style="height:22px">','').replace('</tr>','')+'</tr>'}
   </table>
-  <table style="margin-top:4px">
+
+  <!-- Signature bar page 1 -->
+  <table style="margin-top:2px">
     <tr>
-      <td style="width:50%"><span class="lbl">SIGNATURE (wet signature/e-signature/digital certificate)</span><div class="sig-row"></div></td>
-      <td><span class="lbl">DATE</span><span class="val">${v(e.dateAccomplished)}</span></td>
+      <td style="width:20%;text-align:center" class="lbl"><b>SIGNATURE</b></td>
+      <td style="width:55%;text-align:center;font-size:6.5pt;color:#555">(wet signature/e-signature/digital certificate)</td>
+      <td style="width:10%;text-align:center" class="lbl"><b>DATE</b></td>
+      <td style="width:15%;text-align:center" class="val">${v(e.dateAccomplished)}</td>
     </tr>
   </table>
-  <div style="text-align:right;font-size:6.5pt;margin-top:2px">CS FORM 212 (Revised 2025), Page 1 of 4</div>
+  <div style="font-size:5.5pt;text-align:right;margin-top:2px">CS FORM 212 (Revised 2025), Page 1 of 4</div>
 </div>
 
-<!-- PAGE 2 -->
+<!-- ═══════════════════════ PAGE 2 ═══════════════════════ -->
 <div class="page">
-  <table>
+  <!-- IV. CIVIL SERVICE ELIGIBILITY -->
+  <table style="margin-bottom:2px">
     <tr><td colspan="6" class="sec-hdr">IV. CIVIL SERVICE ELIGIBILITY</td></tr>
     <tr>
-      <th style="font-size:6pt;width:32%">27. ELIGIBILITY (CES/CSEE/Career Service/RA 1080/Board/Bar/Special Laws/etc.)</th>
-      <th style="font-size:6pt;width:8%">RATING</th>
-      <th style="font-size:6pt;width:12%">DATE OF EXAMINATION/CONFERMENT</th>
-      <th style="font-size:6pt;width:20%">PLACE OF EXAMINATION/CONFERMENT</th>
-      <th style="font-size:6pt;width:14%">LICENSE NUMBER</th>
-      <th style="font-size:6pt;width:14%">Valid Until</th>
+      <th class="lbl" style="width:34%">CES/CSEE/CAREER SERVICE/RA 1080 (BOARD/BAR)/UNDER SPECIAL LAWS/CATEGORY II/IV ELIGIBILITY and ELIGIBILITIES FOR UNIFORMED PERSONNEL</th>
+      <th class="lbl" style="width:10%;text-align:center">RATING (If Applicable)</th>
+      <th class="lbl" style="width:14%;text-align:center">DATE OF EXAMINATION / CONFERMENT</th>
+      <th class="lbl" style="width:20%;text-align:center">PLACE OF EXAMINATION / CONFERMENT</th>
+      <th class="lbl" style="width:12%;text-align:center">LICENSE NUMBER (if applicable)</th>
+      <th class="lbl" style="width:10%;text-align:center">Valid Until</th>
     </tr>
-    ${eligRows}
+    ${(e.eligibility||[]).map(r=>`
+    <tr style="height:20px">
+      <td class="val val-sm">${v(r.name)}</td>
+      <td class="val val-sm" style="text-align:center">${v(r.rating)}</td>
+      <td class="val val-sm" style="text-align:center">${fd(r.dateConf)}</td>
+      <td class="val val-sm">${v(r.place)}</td>
+      <td class="val val-sm" style="text-align:center">${v(r.licNo)}</td>
+      <td class="val val-sm" style="text-align:center">${r.licValid==='N/A'?'N/A':fd(r.licValid)}</td>
+    </tr>`).join('')}
+    ${Array.from({length:Math.max(0,7-(e.eligibility||[]).length)},()=>`<tr style="height:20px"><td class="val">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`).join('')}
   </table>
-  <table style="margin-top:4px">
-    <tr><td colspan="6" class="sec-hdr">V. WORK EXPERIENCE (Start from most recent. Include private employment.)</td></tr>
+
+  <!-- V. WORK EXPERIENCE -->
+  <table>
+    <tr><td colspan="6" class="sec-hdr">V. WORK EXPERIENCE <span style="font-size:6pt;font-weight:normal">(Include private employment. Start from your recent work.)</span></td></tr>
     <tr>
-      <th style="font-size:6pt;width:10%">28. From (dd/mm/yyyy)</th>
-      <th style="font-size:6pt;width:10%">To (dd/mm/yyyy)</th>
-      <th style="font-size:6pt;width:26%">POSITION TITLE (Write in full)</th>
-      <th style="font-size:6pt;width:30%">DEPARTMENT/AGENCY/OFFICE/COMPANY (Write in full)</th>
-      <th style="font-size:6pt;width:14%">STATUS OF APPOINTMENT</th>
-      <th style="font-size:6pt;width:10%">GOV'T SERVICE (Y/N)</th>
+      <th class="lbl" style="width:12%;text-align:center">From</th>
+      <th class="lbl" style="width:12%;text-align:center">To</th>
+      <th class="lbl" style="width:26%">POSITION TITLE (Write in full/Do not abbreviate)</th>
+      <th class="lbl" style="width:30%">DEPARTMENT / AGENCY / OFFICE / COMPANY (Write in full/Do not abbreviate)</th>
+      <th class="lbl" style="width:13%;text-align:center">STATUS OF APPOINTMENT</th>
+      <th class="lbl" style="width:7%;text-align:center">GOV'T SERVICE (Y/N)</th>
     </tr>
-    ${workRows}
+    ${(e.workExp||[]).map(r=>`
+    <tr style="height:20px">
+      <td class="val val-sm" style="text-align:center">${fd(r.from)||v(r.from)}</td>
+      <td class="val val-sm" style="text-align:center">${r.to==='Present'?'Present':fd(r.to)||v(r.to)}</td>
+      <td class="val val-sm">${v(r.position)}</td>
+      <td class="val val-sm">${v(r.dept)}</td>
+      <td class="val val-sm" style="text-align:center">${v(r.status)}</td>
+      <td class="val val-sm" style="text-align:center">${(r.govtService==='Yes'||r.govtService==='Y')?'Y':(r.govtService==='No'||r.govtService==='N')?'N':v(r.govtService)}</td>
+    </tr>`).join('')}
+    ${Array.from({length:Math.max(0,20-(e.workExp||[]).length)},()=>`<tr style="height:20px"><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`).join('')}
   </table>
-  <table style="margin-top:4px">
+
+  <!-- Signature page 2 -->
+  <table style="margin-top:2px">
     <tr>
-      <td style="width:50%"><span class="lbl">SIGNATURE (wet signature/e-signature/digital certificate)</span><div class="sig-row"></div></td>
-      <td><span class="lbl">DATE</span><span class="val">${v(e.dateAccomplished)}</span></td>
+      <td style="width:20%;text-align:center" class="lbl"><b>SIGNATURE</b></td>
+      <td style="width:55%;text-align:center;font-size:6.5pt;color:#555">(wet signature/e-signature/digital certificate)</td>
+      <td style="width:10%;text-align:center" class="lbl"><b>DATE</b></td>
+      <td style="width:15%;text-align:center" class="val">${v(e.dateAccomplished)}</td>
     </tr>
   </table>
-  <div style="text-align:right;font-size:6.5pt;margin-top:2px">CS FORM 212 (Revised 2025), Page 2 of 4</div>
+  <div style="font-size:5.5pt;text-align:right;margin-top:2px">CS FORM 212 (Revised 2025), Page 2 of 4</div>
 </div>
 
-<!-- PAGE 3 -->
+<!-- ═══════════════════════ PAGE 3 ═══════════════════════ -->
 <div class="page">
-  <table>
-    <tr><td colspan="5" class="sec-hdr">VI. VOLUNTARY WORK OR INVOLVEMENT IN CIVIC/NON-GOVERNMENT/PEOPLE/VOLUNTARY ORGANIZATION/S</td></tr>
+  <!-- VI. VOLUNTARY WORK -->
+  <table style="margin-bottom:2px">
+    <tr><td colspan="5" class="sec-hdr">VI. VOLUNTARY WORK OR INVOLVEMENT IN CIVIC / NON-GOVERNMENT / PEOPLE / VOLUNTARY ORGANIZATION/S</td></tr>
     <tr>
-      <th style="font-size:6pt;width:40%">29. NAME &amp; ADDRESS OF ORGANIZATION (Write in full)</th>
-      <th style="font-size:6pt;width:10%">From (dd/mm/yyyy)</th>
-      <th style="font-size:6pt;width:10%">To (dd/mm/yyyy)</th>
-      <th style="font-size:6pt;width:10%">NO. OF HOURS</th>
-      <th style="font-size:6pt;width:30%">POSITION/NATURE OF WORK</th>
+      <th class="lbl" style="width:38%">29. NAME &amp; ADDRESS OF ORGANIZATION (Write in full)</th>
+      <th class="lbl" style="width:12%;text-align:center">From</th>
+      <th class="lbl" style="width:12%;text-align:center">To</th>
+      <th class="lbl" style="width:10%;text-align:center">NUMBER OF HOURS</th>
+      <th class="lbl" style="width:28%">POSITION / NATURE OF WORK</th>
     </tr>
-    ${volRows}
+    ${(e.voluntaryWork||[]).map(r=>`
+    <tr style="height:20px">
+      <td class="val val-sm">${v(r.org||r.name||'')}</td>
+      <td class="val val-sm" style="text-align:center">${fd(r.from)||v(r.from)}</td>
+      <td class="val val-sm" style="text-align:center">${fd(r.to)||v(r.to)}</td>
+      <td class="val val-sm" style="text-align:center">${v(r.hours)}</td>
+      <td class="val val-sm">${v(r.position)}</td>
+    </tr>`).join('')}
+    ${Array.from({length:Math.max(0,7-(e.voluntaryWork||[]).length)},()=>`<tr style="height:20px"><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>`).join('')}
   </table>
-  <table style="margin-top:4px">
+
+  <!-- VII. L&D TRAINING -->
+  <table style="margin-bottom:2px">
     <tr><td colspan="6" class="sec-hdr">VII. LEARNING AND DEVELOPMENT (L&amp;D) INTERVENTIONS/TRAINING PROGRAMS ATTENDED</td></tr>
     <tr>
-      <th style="font-size:6pt;width:36%">30. TITLE OF L&amp;D INTERVENTIONS/TRAINING PROGRAMS (Write in full)</th>
-      <th style="font-size:6pt;width:10%">From (dd/mm/yyyy)</th>
-      <th style="font-size:6pt;width:10%">To (dd/mm/yyyy)</th>
-      <th style="font-size:6pt;width:8%">NO. OF HOURS</th>
-      <th style="font-size:6pt;width:12%">Type of L&amp;D</th>
-      <th style="font-size:6pt;width:24%">CONDUCTED/SPONSORED BY (Write in full)</th>
+      <th class="lbl" style="width:35%">30. TITLE OF LEARNING AND DEVELOPMENT INTERVENTIONS / TRAINING PROGRAMS (Write in full)</th>
+      <th class="lbl" style="width:11%;text-align:center">From</th>
+      <th class="lbl" style="width:11%;text-align:center">To</th>
+      <th class="lbl" style="width:9%;text-align:center">NUMBER OF HOURS</th>
+      <th class="lbl" style="width:12%;text-align:center">Type of L&amp;D (Managerial/Supervisory/Technical/etc)</th>
+      <th class="lbl" style="width:22%">CONDUCTED / SPONSORED BY (Write in full)</th>
     </tr>
-    ${trRows}
+    ${tr.map(t=>`
+    <tr style="height:20px">
+      <td class="val val-sm">${v(t.title)}</td>
+      <td class="val val-sm" style="text-align:center">${fd(t.from)||v(t.from)}</td>
+      <td class="val val-sm" style="text-align:center">${fd(t.to)||v(t.to)}</td>
+      <td class="val val-sm" style="text-align:center">${v(t.hours)}</td>
+      <td class="val val-sm" style="text-align:center">${v(t.type)}</td>
+      <td class="val val-sm">${v(t.conductedBy)}</td>
+    </tr>`).join('')}
+    ${Array.from({length:Math.max(0,15-tr.length)},()=>`<tr style="height:20px"><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`).join('')}
   </table>
-  <table style="margin-top:4px">
+
+  <!-- VIII. OTHER INFO -->
+  <table>
     <tr><td colspan="3" class="sec-hdr">VIII. OTHER INFORMATION</td></tr>
     <tr>
-      <th style="font-size:6pt;width:33%">31. SPECIAL SKILLS and HOBBIES</th>
-      <th style="font-size:6pt;width:33%">32. NON-ACADEMIC DISTINCTIONS/RECOGNITION (Write in full)</th>
-      <th style="font-size:6pt;width:34%">33. MEMBERSHIP IN ASSOCIATION/ORGANIZATION (Write in full)</th>
+      <th class="lbl" style="width:33%">31. SPECIAL SKILLS and HOBBIES</th>
+      <th class="lbl" style="width:34%">32. NON-ACADEMIC DISTINCTIONS / RECOGNITION (Write in full)</th>
+      <th class="lbl" style="width:33%">33. MEMBERSHIP IN ASSOCIATION/ORGANIZATION (Write in full)</th>
     </tr>
-    ${otherRows}
+    ${(()=>{
+      const skillLines=((e.otherInfo||{}).skills||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+      const distLines=((e.otherInfo||{}).distinctions||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+      const membLines=((e.otherInfo||{}).memberships||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+      const max=Math.max(5,skillLines.length,distLines.length,membLines.length);
+      return Array.from({length:max},(_,i)=>`<tr style="height:18px">
+        <td class="val val-sm">${skillLines[i]?v(skillLines[i]):''}&nbsp;</td>
+        <td class="val val-sm">${distLines[i]?v(distLines[i]):''}&nbsp;</td>
+        <td class="val val-sm">${membLines[i]?v(membLines[i]):''}&nbsp;</td>
+      </tr>`).join('');
+    })()}
   </table>
-  <table style="margin-top:4px">
+
+  <!-- Signature page 3 -->
+  <table style="margin-top:2px">
     <tr>
-      <td style="width:50%"><span class="lbl">SIGNATURE (wet signature/e-signature/digital certificate)</span><div class="sig-row"></div></td>
-      <td><span class="lbl">DATE</span><span class="val">${v(e.dateAccomplished)}</span></td>
+      <td style="width:20%;text-align:center" class="lbl"><b>SIGNATURE</b></td>
+      <td style="width:55%;text-align:center;font-size:6.5pt;color:#555">(wet signature/e-signature/digital certificate)</td>
+      <td style="width:10%;text-align:center" class="lbl"><b>DATE</b></td>
+      <td style="width:15%;text-align:center" class="val">${v(e.dateAccomplished)}</td>
     </tr>
   </table>
-  <div style="text-align:right;font-size:6.5pt;margin-top:2px">CS FORM 212 (Revised 2025), Page 3 of 4</div>
+  <div style="font-size:5.5pt;text-align:right;margin-top:2px">CS FORM 212 (Revised 2025), Page 3 of 4</div>
 </div>
 
-<!-- PAGE 4 -->
+<!-- ═══════════════════════ PAGE 4 ═══════════════════════ -->
 <div class="page">
-  <table>
-    <tr>
-      <th style="font-size:6pt;width:55%">QUESTION</th>
-      <th style="font-size:6pt;width:6%">YES</th>
-      <th style="font-size:6pt;width:6%">NO</th>
-      <th style="font-size:6pt;width:33%">DETAILS (if YES)</th>
-    </tr>
-    ${declRow('34a','Are you related by consanguinity or affinity to the appointing or recommending authority, or to the chief of bureau or office or to the person who has immediate supervision over you in the Office, Bureau or Department where you will be appointed, within the third degree?', q.q34a, q.q34det, null)}
-    ${declRow('34b','...within the fourth degree (for Local Government Unit - Career Employees)?', q.q34b, q.q34det, null)}
-    ${declRow('35a','Have you ever been found guilty of any administrative offense?', q.q35a, q.q35aDet, null)}
-    ${declRow('35b','Have you been criminally charged before any court?', q.q35b, q.q35bDet, q.q35bDate?['Date Filed: '+q.q35bDate,'Status: '+(q.q35bStatus||'')]:null)}
-    ${declRow('36','Have you ever been convicted of any crime or violation of any law, decree, ordinance or regulation by any court or tribunal?', q.q36, q.q36Det, null)}
-    ${declRow('37','Have you ever been separated from the service in any of the following modes: resignation, retirement, dropped from the rolls, dismissal, termination, end of term, finished contract or phased out (abolition) in the public or private sector?', q.q37, q.q37Det, null)}
-    ${declRow('38a','Have you ever been a candidate in a national or local election held within the last year (except Barangay election)?', q.q38a, q.q38aDet, null)}
-    ${declRow('38b','Have you resigned from the government service during the three (3)-month period before the last election to promote/actively campaign for a national or local candidate?', q.q38b, q.q38bDet, null)}
-    ${declRow('39','Have you acquired the status of an immigrant or permanent resident of another country?', q.q39, q.q39Det, null)}
-    ${declRow('40a','Are you a member of any indigenous group?', q.q40a, q.q40aSpec, null)}
-    ${declRow('40b','Are you a person with disability?', q.q40b, q.q40bId?'ID No: '+q.q40bId:'', null)}
-    ${declRow('40c','Are you a solo parent?', q.q40c, q.q40cId?'ID No: '+q.q40cId:'', null)}
+  <!-- Declarations -->
+  <table style="margin-bottom:2px">
+    <tr><td colspan="2" class="sec-hdr">IX. QUESTIONS / DECLARATIONS</td></tr>
+
+    ${[
+      ['34. Are you related by consanguinity or affinity to the appointing or recommending authority, or to the chief of bureau or office or to the person who has immediate supervision over you in the Office, Bureau or Department where you will be appointed,<br>a. within the third degree?', 'q34a', null],
+      ['&nbsp;&nbsp;&nbsp;b. within the fourth degree (for Local Government Unit - Career Employees)?', 'q34b', 'q34det'],
+      ['35. a. Have you ever been found guilty of any administrative offense?', 'q35a', 'q35aDet'],
+      ['&nbsp;&nbsp;&nbsp;b. Have you been criminally charged before any court?', 'q35b', 'q35bDet'],
+      ['36. Have you ever been convicted of any crime or violation of any law, decree, ordinance or regulation by any court or tribunal?', 'q36', 'q36Det'],
+      ['37. Have you ever been separated from the service in any of the following modes: resignation, retirement, dropped from the rolls, dismissal, termination, end of term, finished contract or phased out (abolition) in the public or private sector?', 'q37', 'q37Det'],
+      ['38. a. Have you ever been a candidate in a national or local election held within the last year (except Barangay election)?', 'q38a', 'q38aDet'],
+      ['&nbsp;&nbsp;&nbsp;b. Have you resigned from the government service during the three (3)-month period before the last election to promote/actively campaign for a national or local candidate?', 'q38b', 'q38bDet'],
+      ['39. Have you acquired the status of an immigrant or permanent resident of another country?', 'q39', 'q39Det'],
+      ['40. Pursuant to: (a) Indigenous People\'s Act (RA 8371); (b) Magna Carta for Disabled Persons (RA 7277, as amended); and (c) Expanded Solo Parents Welfare Act (RA 11861), please answer the following items:<br>a. Are you a member of any indigenous group?', 'q40a', 'q40aSpec'],
+      ['&nbsp;&nbsp;&nbsp;b. Are you a person with disability?', 'q40b', 'q40bId'],
+      ['&nbsp;&nbsp;&nbsp;c. Are you a solo parent?', 'q40c', 'q40cId'],
+    ].map(([lbl,qk,detK])=>{
+      const val = q[qk];
+      const yes = val===true||val==='Y'||val==='Yes';
+      const detVal = detK ? v(q[detK]) : '';
+      return `<tr>
+        <td style="font-size:7pt;padding:2px 4px;width:72%">${lbl}${detVal?`<div style="color:#800;font-size:6.5pt;margin-top:1px">If YES: ${detVal}</div>`:''}</td>
+        <td style="width:28%;text-align:center;vertical-align:middle">
+          <div style="display:inline-flex;gap:8px;align-items:center;font-size:7pt">
+            ${box(yes)} <b>YES</b> &nbsp; ${box(!yes)} <b>NO</b>
+          </div>
+        </td>
+      </tr>`;
+    }).join('')}
   </table>
 
-  <table style="margin-top:4px">
+  <!-- References -->
+  <table style="margin-bottom:2px">
     <tr><td colspan="3" class="sec-hdr">41. REFERENCES (Person not related by consanguinity or affinity to applicant/appointee)</td></tr>
     <tr>
-      <th style="font-size:6pt;width:38%">NAME</th>
-      <th style="font-size:6pt;width:38%">OFFICE/RESIDENTIAL ADDRESS</th>
-      <th style="font-size:6pt;width:24%">CONTACT NO. AND/OR EMAIL</th>
+      <th class="lbl" style="width:40%">NAME</th>
+      <th class="lbl" style="width:35%">OFFICE / RESIDENTIAL ADDRESS</th>
+      <th class="lbl" style="width:25%">CONTACT NO. AND/OR EMAIL</th>
     </tr>
-    ${refs.slice(0,3).map(r=>`<tr>
-      <td><span class="val">${v(r.name)}</span></td>
-      <td><span class="val">${v(r.address)}</span></td>
-      <td><span class="val">${v(r.contact)}</span></td>
+    ${refs.map(r=>`<tr style="height:20px">
+      <td class="val val-sm">${v(r.name)}</td>
+      <td class="val val-sm">${v(r.address)}</td>
+      <td class="val val-sm">${v(r.contact)}</td>
     </tr>`).join('')}
   </table>
 
-  <table style="margin-top:4px">
+  <!-- Declaration oath + Gov't ID + Photo -->
+  <table style="margin-bottom:2px">
     <tr>
-      <td colspan="2" style="font-size:7pt;vertical-align:top">
-        <b>42.</b> I declare under oath that I have personally accomplished this Personal Data Sheet which is a true, correct, and complete statement pursuant to the provisions of pertinent laws, rules, and regulations of the Republic of the Philippines. I authorize the agency head/authorized representative to verify/validate the contents stated herein. I agree that any misrepresentation made in this document and its attachments shall cause the filing of administrative/criminal case/s against me.
+      <td style="width:60%;vertical-align:top;font-size:6.5pt;padding:3px">
+        <b>42.</b> I declare under oath that I have personally accomplished this Personal Data Sheet which is a true, correct, and
+        complete statement pursuant to the provisions of pertinent laws, rules, and regulations of the Republic of the
+        Philippines. I authorize the agency head/authorized representative to verify/validate the contents stated herein.
+        I agree that any misrepresentation made in this document and its attachments shall cause the filing of
+        administrative/criminal case/s against me.
+        <br><br>
+        <table style="margin-top:6px">
+          <tr>
+            <td style="width:50%;border:none">
+              <div style="font-size:6.5pt;margin-bottom:2px">Government Issued ID (i.e. Passport, GSIS, SSS, PRC, Driver's License, etc.)</div>
+              <div style="font-size:6pt;margin-bottom:2px;font-style:italic">PLEASE INDICATE ID Number and Date of Issuance</div>
+              <table>
+                <tr><td class="lbl" style="width:110px">Government Issued ID:</td><td class="val val-sm">${v(e.govtId)}</td></tr>
+                <tr><td class="lbl">ID/License/Passport No.:</td><td class="val val-sm">${v(e.govtIdNo)}</td></tr>
+                <tr><td class="lbl">Date/Place of Issuance:</td><td class="val val-sm">${v(e.govtIdIssuance)}</td></tr>
+              </table>
+            </td>
+            <td style="width:50%;border:none;vertical-align:bottom">
+              <div style="border:1px solid #555;height:50px;text-align:center;line-height:50px;font-size:6.5pt;color:#888">Signature (Sign inside the box)</div>
+              <table style="margin-top:3px">
+                <tr><td class="lbl">Date Accomplished:</td><td class="val val-sm">${v(e.dateAccomplished)}</td></tr>
+                <tr><td class="lbl">Right Thumbmark:</td><td style="height:28px">&nbsp;</td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>
       </td>
-      <td rowspan="3" style="vertical-align:middle;text-align:center;width:22%;font-size:6.5pt">
-        PHOTO<br><span style="font-size:5.5pt">Passport-sized unfiltered digital picture taken within the last 6 months<br>4.5 cm. &times; 3.5 cm</span>
-        <div style="width:100%;min-height:55pt;border:1px solid #000;margin-top:4px"></div>
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2" style="vertical-align:top">
-        <span class="lbl">Government Issued ID (i.e. Passport, GSIS, SSS, PRC, Driver's License, etc.) &mdash; PLEASE INDICATE ID Number and Date of Issuance</span>
-        <table style="border:none;margin-top:2px"><tr>
-          <td class="nb" style="width:40%"><span class="lbl">Government Issued ID</span><span class="val">${v(e.govtId)}</span></td>
-          <td class="nb"><span class="lbl">Signature (Sign inside the box)</span><div style="height:18pt;border:1px solid #000;width:120px"></div></td>
-        </tr><tr>
-          <td class="nb"><span class="lbl">ID/License/Passport No.</span><span class="val">${v(e.govtIdNo)}</span></td>
-          <td class="nb"><span class="lbl">Date Accomplished</span><span class="val">${v(e.dateAccomplished)}</span></td>
-        </tr><tr>
-          <td class="nb"><span class="lbl">Date/Place of Issuance</span><span class="val">${v(e.govtIdIssuance)}</span></td>
-          <td class="nb"><span class="lbl">Right Thumbmark</span><div style="height:22pt;border:1px solid #000;width:60px"></div></td>
-        </tr></table>
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2" style="font-size:7pt">
-        SUBSCRIBED AND SWORN to before me this ______________________________, affiant exhibiting his/her validly issued government ID as indicated above.
-        <div style="margin-top:10pt;text-align:center">
-          <div style="display:inline-block;width:200px;border-top:1px solid #000;text-align:center;font-size:6pt">(wet signature/e-signature/digital certificate except for notary public)<br>Person Administering Oath</div>
+      <td style="width:40%;text-align:center;vertical-align:top;font-size:6.5pt">
+        <div style="border:1px solid #555;width:90px;height:110px;margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:6pt;color:#888;text-align:center;padding:4px">
+          Passport-sized unfiltered digital picture taken within the last 6 months<br>4.5 cm. X 3.5 cm
         </div>
+        <b>PHOTO</b>
       </td>
     </tr>
   </table>
-  <div style="text-align:right;font-size:6.5pt;margin-top:2px">CS FORM 212 (Revised 2025), Page 4 of 4</div>
+
+  <!-- Subscribed & Sworn -->
+  <table>
+    <tr>
+      <td style="font-size:6.5pt;padding:4px">
+        SUBSCRIBED AND SWORN to before me this ___________________________,
+        affiant exhibiting his/her validly issued government ID as indicated above.
+        <br><br>
+        <div style="border:1px solid #555;height:40px;text-align:center;padding-top:10px;font-size:6.5pt;color:#888">(wet signature/e-signature/digital certificate except for notary public)</div>
+        <div style="text-align:center;font-size:6.5pt;margin-top:2px">Person Administering Oath</div>
+      </td>
+    </tr>
+  </table>
+
+  <div style="font-size:5.5pt;text-align:right;margin-top:2px">CS FORM 212 (Revised 2025), Page 4 of 4</div>
 </div>
 
-</body>
-</html>`;
+</body></html>`;
 
-  const win = window.open('', '_blank');
-  if (!win) { toast('Pop-up blocked. Please allow pop-ups for this site.', 'error'); return; }
-  win.document.write(html);
-  win.document.close();
+  w.document.write(html);
+  w.document.close();
 }
 
 
-// ══════════ FILL EXCEL PDS — CS Form 212 (Revised 2025) .xlsx ══════════
-// Uses SheetJS (xlsx) to fill the official Excel template with employee data,
-// writing each field into the exact unlocked input cells identified from the template.
+// ══════════ FILL DOCX PDS — fills pds_template.docx directly ══════════
+// Uses JSZip to open the uploaded .docx, edits document.xml cells by position,
+// then streams the filled .docx back as a download.
 
 async function fillExcelPDS(id) {
+  // Alias kept for backward compat with button calls — routes to docx filler
+  return fillDocxPDS(id);
+}
+
+async function fillDocxPDS(id) {
   const e = employees.find(x => x.id === id);
   if (!e) { toast('Employee not found.', 'error'); return; }
-  toast('Generating Excel PDS…', 'success');
+  toast('Generating filled DOCX…', 'success');
 
   const tr  = empTr(id);
-  const pr  = e.personal;
-  const fam = e.family;
+  const pr  = e.personal  || {};
+  const fam = e.family    || {};
   const q   = e.questions || {};
-  const refs = (e.references && e.references.length >= 3)
-    ? e.references
-    : [{name:'',address:'',contact:''},{name:'',address:'',contact:''},{name:'',address:'',contact:''}];
+  const refs = (() => {
+    const base = (e.references || []).filter(r => r && r.name);
+    while (base.length < 3) base.push({name:'',address:'',contact:''});
+    return base.slice(0,3);
+  })();
 
-  // Helper: format YYYY-MM-DD → dd/mm/yyyy
+  // ── Helpers ──────────────────────────────────────────────────────────────
   function fd(d) {
     if (!d) return '';
-    const parts = d.split('-');
-    if (parts.length === 3 && parts[0].length === 4) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    return d;
+    const p = String(d).split('-');
+    if (p.length===3 && p[0].length===4) return `${p[2]}/${p[1]}/${p[0]}`;
+    return String(d);
+  }
+  const sv = s => (s||'').toString().trim();
+
+  // Build a minimal <w:r><w:t>TEXT</w:t></w:r> XML string
+  function makeRun(text, bold=false, size=16) {
+    if (!text) return '';
+    const escaped = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const rpr = `<w:rPr>`
+      + `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>`
+      + (bold ? `<w:b/>` : '')
+      + `<w:sz w:val="${size}"/>`
+      + `</w:rPr>`;
+    return `<w:r>${rpr}<w:t xml:space="preserve">${escaped}</w:t></w:r>`;
+  }
+
+  // Clear all <w:r> runs from the first <w:p> of a cell XML string
+  // and inject new run. We work with the raw XML string via regex for speed.
+  function setCellText(cellXml, text, bold=false, size=16) {
+    if (!text) return cellXml;
+    const run = makeRun(text, bold, size);
+    // Remove existing runs inside the first paragraph
+    return cellXml.replace(/(<w:p\b[^>]*>)([\s\S]*?)(<\/w:p>)/,
+      (m, open, inner, close) => {
+        // Keep pPr, remove all w:r and w:ins/w:del
+        const ppr = (inner.match(/<w:pPr[\s\S]*?<\/w:pPr>/) || [''])[0];
+        return `${open}${ppr}${run}${close}`;
+      });
   }
 
   try {
-    // Dynamically import SheetJS
-    const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
+    // Load JSZip
+    const JSZip = (await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js')).default
+      || window.JSZip
+      || (await new Promise(res => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+          s.onload = () => res(window.JSZip);
+          document.head.appendChild(s);
+        }));
 
-    // Fetch the Excel template
-    const res = await fetch('ANNEX_H-1_-_CS_Form_No__212_Revised_2025_-_Personal_Data_Sheet.xlsx');
-    if (!res.ok) throw new Error('Could not load Excel template. Make sure it is deployed alongside the app.');
-    const arrayBuf = await res.arrayBuffer();
-    const wb = XLSX.read(arrayBuf, { type: 'array', cellStyles: true, bookVBA: true });
+    // Fetch the docx template
+    const res = await fetch('pds_template.docx');
+    if (!res.ok) throw new Error('Could not load pds_template.docx. Make sure it is deployed with the app.');
+    const buf = await res.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
 
-    // ── Helper: write a value to a specific cell (creates cell if missing) ──
-    function setCell(sheetName, cellRef, value) {
-      const ws = wb.Sheets[sheetName];
-      if (!ws) return;
-      if (!ws[cellRef]) ws[cellRef] = { t: 's', v: '' };
-      ws[cellRef].v = value === null || value === undefined ? '' : String(value);
-      ws[cellRef].t = 's';
-      // Remove formula so value shows directly
-      delete ws[cellRef].f;
+    // Get document.xml as text
+    let xml = await zip.file('word/document.xml').async('string');
+
+    // ── Parse tables: split XML into 4 table chunks ─────────────────────────
+    // We'll use a cell accessor that works on the raw XML string via
+    // splitting by <w:tbl> and <w:tr> and <w:tc> boundaries.
+
+    const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+
+    // Split into table blocks
+    const tblSplit = xml.split(/<w:tbl(?:\s|>)/);
+    // tblSplit[0] = before tables, tblSplit[1..4] = table bodies (without opening tag)
+    // We need to reconstruct: work table by table, row by row, cell by cell
+
+    // Build a mutable structure: array of tables, each = array of rows, each = array of cell XML strings
+    function parseTables(rawXml) {
+      const tables = [];
+      const tblRx = /<w:tbl[\s\S]*?<\/w:tbl>/g;
+      let tblMatch;
+      while ((tblMatch = tblRx.exec(rawXml)) !== null) {
+        const tblXml = tblMatch[0];
+        const rowRx = /<w:tr\b[\s\S]*?<\/w:tr>/g;
+        const rows = [];
+        let rowMatch;
+        while ((rowMatch = rowRx.exec(tblXml)) !== null) {
+          const rowXml = rowMatch[0];
+          const cellRx = /<w:tc\b[\s\S]*?<\/w:tc>/g;
+          const cells = [];
+          let cellMatch;
+          while ((cellMatch = cellRx.exec(rowXml)) !== null) {
+            cells.push(cellMatch[0]);
+          }
+          rows.push({ xml: rowXml, cells });
+        }
+        tables.push({ xml: tblXml, rows, start: tblMatch.index, end: tblMatch.index + tblXml.length });
+      }
+      return tables;
     }
 
-    // ── Helper: YES/NO for declarations ──
-    function yn(val) { return (val === true || val === 'Y' || val === 'Yes') ? 'YES' : 'NO'; }
+    const tables = parseTables(xml);
+    if (tables.length < 4) throw new Error('Template structure error: expected 4 tables (one per page).');
 
-    // ════════════════════════════════════════════════════════════════════
-    // SHEET C1 — Personal Info, Family Background, Educational Background
-    // ════════════════════════════════════════════════════════════════════
-
-    // 1. SURNAME  → D10:N10 (merged input area; write to D10 as anchor)
-    setCell('C1', 'D10', pr.surname?.toUpperCase());
-
-    // 2. FIRST NAME → D11:K11
-    setCell('C1', 'D11', pr.firstName?.toUpperCase());
-    // NAME EXTENSION (JR., SR) → L11 (already has placeholder text; overwrite)
-    setCell('C1', 'L11', pr.nameExt || '');
-
-    // MIDDLE NAME → D12:K12
-    setCell('C1', 'D12', pr.middleName?.toUpperCase());
-
-    // 3. DATE OF BIRTH → D13:F13
-    setCell('C1', 'D13', fd(pr.dob));
-
-    // 4. PLACE OF BIRTH → D15:F15
-    setCell('C1', 'D15', pr.pob);
-
-    // 16. CITIZENSHIP — write text into the citizenship area
-    // For Filipino: tick via text in H13; for dual, write country in M15
-    setCell('C1', 'H13', pr.dualCitizenship ? '' : 'Filipino');
-    if (pr.dualCitizenship) {
-      setCell('C1', 'H13', 'Dual Citizenship');
-      setCell('C1', 'M15', pr.dualCountry || '');
+    // Helper: set text in cell [tableIdx][rowIdx][cellIdx]
+    function fill(tIdx, rIdx, cIdx, text, bold=false, size=16) {
+      if (!text) return;
+      const tbl = tables[tIdx];
+      if (!tbl || rIdx >= tbl.rows.length) return;
+      const row = tbl.rows[rIdx];
+      if (!row || cIdx >= row.cells.length) return;
+      const oldCell = row.cells[cIdx];
+      row.cells[cIdx] = setCellText(oldCell, sv(text), bold, size);
     }
 
-    // 5. SEX AT BIRTH → D16:F16
-    setCell('C1', 'D16', pr.sex);
+    // Rebuild a table's XML from mutated cells
+    function rebuildTbl(tbl) {
+      let out = tbl.xml;
+      // Replace each row's original XML with the mutated version
+      for (const row of tbl.rows) {
+        let newRow = row.xml;
+        for (let ci = 0; ci < row.cells.length; ci++) {
+          const orig = row.cells[ci]; // already mutated in place
+          // rebuild row by splicing cells back — since we mutated row.cells[]
+          // we need to compare with original. Simplest: rebuild row from scratch.
+        }
+        // Actually re-build by replacing cell xmls in the row xml
+        // We stored the mutated cell xml directly; reconstruct row from cells
+        const cellBlock = row.cells.join('');
+        // Extract trPr if any
+        const trPr = (row.xml.match(/<w:trPr[\s\S]*?<\/w:trPr>/) || [''])[0];
+        // Get the opening tag
+        const openTag = row.xml.match(/^<w:tr\b[^>]*>/)[0];
+        newRow = `${openTag}${trPr}${cellBlock}</w:tr>`;
+        out = out.replace(row.xml, newRow);
+      }
+      return out;
+    }
 
-    // 6. CIVIL STATUS → D17:F17
-    setCell('C1', 'D17', pr.civil);
+    // ── PAGE 1 / TABLE 0: Personal Info, Family, Education ──────────────────
+    const T = (t,r,c,text,bold=false) => fill(t,r,c,text,bold,16);
+    const TB= (t,r,c,text) => fill(t,r,c,text,true,18); // bigger bold for name
 
-    // 7. HEIGHT → D22:F22
-    setCell('C1', 'D22', pr.height);
+    // Row 3 (idx3): Surname in C1
+    TB(0, 3, 1, sv(pr.surname).toUpperCase());
+    // Row 4 (idx4): First name C0, NameExt C1
+    TB(0, 4, 0, sv(pr.firstName).toUpperCase());
+    T(0, 4, 1, sv(pr.nameExt));
+    // Row 5 (idx5): Middle name C0
+    TB(0, 5, 0, sv(pr.middleName).toUpperCase());
 
-    // 8. WEIGHT → D24:F24
-    setCell('C1', 'D24', pr.weight);
+    // Row 6 (idx6): DOB in C1
+    T(0, 6, 1, fd(pr.dob));
+    // Citizenship row 7 C2 blank
+    T(0, 7, 2, pr.dualCitizenship ? `Dual Citizenship — ${sv(pr.dualCountry)}` : 'Filipino');
 
-    // 9. BLOOD TYPE → D25:F25
-    setCell('C1', 'D25', pr.blood);
+    // Row 7 (idx7): Place of birth C1
+    T(0, 7, 1, sv(pr.pob));
+    // Row 8 (idx8): Sex C2
+    T(0, 8, 2, sv(pr.sex));
+    // Row 9 (idx9): Civil status C3, Residential ZIP
+    T(0, 9, 3, sv(pr.civil));
+
+    // Residential address (rows 11,12,13,14 — idx10,11,12,13)
+    T(0, 11, 3, sv(pr.residHouseNo));
+    T(0, 11, 4, sv(pr.residStreet));
+    T(0, 12, 3, sv(pr.residSubdiv));
+    T(0, 12, 4, sv(pr.residBrgy));
+    T(0, 13, 3, sv(pr.residCity));
+    T(0, 13, 4, sv(pr.residProv));
+    // ZIP for residential goes in row 9 C3 — already filled with civil status above
+    // Let's check: R10(idx9)C3 = "17. RESIDENTIAL ADDRESS ZIP CODE" — the ZIP input blank is C3
+    // But C3 was set to civil status — check cell map:
+    // R10C1=6 CIVIL STATUS, R10C2=Single..., R10C3=17. RESIDENTIAL ADDRESS ZIP CODE, R10C4=blank
+    T(0, 9, 3, sv(pr.residZip));  // blank for ZIP in addr section
+
+    // Height/Weight/Blood
+    T(0, 13, 1, sv(pr.height));
+    T(0, 15, 1, sv(pr.weight));
+    T(0, 16, 1, sv(pr.blood));
+
+    // Permanent address
+    T(0, 18, 3, sv(pr.permHouseNo));
+    T(0, 18, 4, sv(pr.permStreet));
+    T(0, 19, 3, sv(pr.permSubdiv));
+    T(0, 19, 4, sv(pr.permBrgy));
+    T(0, 21, 3, sv(pr.permCity));
+    T(0, 21, 4, sv(pr.permProv));
+    T(0, 16, 3, sv(pr.permZip));
+
+    // IDs
+    T(0, 18, 1, sv(pr.umid));
+    T(0, 20, 1, sv(pr.pagibig));
+    T(0, 22, 1, sv(pr.philhealth));
+    T(0, 23, 1, sv(pr.philsys));
+    T(0, 24, 1, sv(pr.tin));
+    T(0, 25, 1, sv(pr.agencyNo));
+
+    // Contact
+    T(0, 23, 3, sv(pr.telNo));
+    T(0, 24, 3, sv(pr.mobileNo));
+    T(0, 25, 3, sv(pr.email));
+
+    // Family — Spouse (rows 27-33, idx 27-33)
+    T(0, 27, 1, sv(fam.spouseSurname));
+    T(0, 28, 1, sv(fam.spouseFirstName));
+    T(0, 28, 2, sv(fam.spouseExt));
+    T(0, 29, 1, sv(fam.spouseMiddleName));
+    T(0, 30, 1, sv(fam.spouseOccupation));
+    T(0, 31, 1, sv(fam.spouseEmployer));
+    T(0, 32, 1, sv(fam.spouseBusiness));
+    T(0, 33, 1, sv(fam.spouseTel));
+    // Father (rows 34-36, idx 34-36)
+    T(0, 34, 1, sv(fam.fatherSurname));
+    T(0, 35, 1, sv(fam.fatherFirstName));
+    T(0, 35, 2, sv(fam.fatherExt));
+    T(0, 36, 1, sv(fam.fatherMiddleName));
+    // Mother (rows 37-40, idx 37-40)
+    T(0, 37, 1, sv(fam.motherSurname));
+    T(0, 38, 1, sv(fam.motherFirstName));
+    T(0, 39, 1, sv(fam.motherMiddleName));
+
+    // Children — right side (last 2 cols of rows 27-40)
+    const children = fam.children || [];
+    children.slice(0,10).forEach((ch, i) => {
+      const r = tables[0].rows[27 + i];
+      if (!r) return;
+      const n = r.cells.length;
+      if (n >= 2) {
+        r.cells[n-2] = setCellText(r.cells[n-2], sv(ch.name));
+        r.cells[n-1] = setCellText(r.cells[n-1], fd(ch.dob));
+      }
+    });
+
+    // Education (rows 44-48, idx 44-48) — Elementary/Secondary/Vocational/College/Graduate
+    const eduMap = [['elementary',44],['secondary',45],['vocational',46],['college',47],['graduate',48]];
+    eduMap.forEach(([lvl, ridx]) => {
+      const ed = (e.education||[]).find(x => (x.level||'').toLowerCase().startsWith(lvl));
+      if (!ed) return;
+      T(0, ridx, 1, sv(ed.school));
+      T(0, ridx, 2, sv(ed.course));
+      T(0, ridx, 3, fd(ed.from)||sv(ed.from));
+      T(0, ridx, 4, fd(ed.to)||sv(ed.to));
+      T(0, ridx, 5, sv(ed.units));
+      T(0, ridx, 6, sv(ed.yearGrad));
+      T(0, ridx, 7, sv(ed.honors));
+    });
+
+    // ── PAGE 2 / TABLE 1: Eligibility + Work Experience ─────────────────────
+    // Eligibility rows 3-10 (idx 2-9)
+    (e.eligibility||[]).slice(0,8).forEach((el, i) => {
+      T(1, 2+i, 0, sv(el.name));
+      T(1, 2+i, 1, sv(el.rating));
+      T(1, 2+i, 2, fd(el.dateConf)||sv(el.dateConf));
+      T(1, 2+i, 3, sv(el.place));
+      T(1, 2+i, 4, sv(el.licNo));
+      T(1, 2+i, 5, sv(el.licValid));
+    });
+
+    // Work Experience rows 14-41 (idx 13-40) — header at idx13 has From/To cols
+    // Data starts idx 14
+    (e.workExp||[]).slice(0,28).forEach((wk, i) => {
+      const ridx = 14 + i;
+      T(1, ridx, 0, fd(wk.from)||sv(wk.from));
+      T(1, ridx, 1, fd(wk.to)||sv(wk.to));
+      T(1, ridx, 2, sv(wk.position));
+      T(1, ridx, 3, sv(wk.dept));
+      T(1, ridx, 4, sv(wk.status));
+      const gs = wk.govtService;
+      T(1, ridx, 5, (gs==='Yes'||gs===true||gs==='Y') ? 'Y' : (gs==='No'||gs===false||gs==='N') ? 'N' : sv(gs));
+    });
+
+    // ── PAGE 3 / TABLE 2: Voluntary Work + Training + Other Info ────────────
+    // Voluntary Work rows 3-10 (idx 2-9) — header at idx2 has From/To
+    // Data from idx 3
+    (e.voluntaryWork||[]).slice(0,7).forEach((vw, i) => {
+      const ridx = 3 + i;
+      T(2, ridx, 0, sv(vw.org||vw.name||''));
+      T(2, ridx, 1, fd(vw.from)||sv(vw.from));
+      T(2, ridx, 2, fd(vw.to)||sv(vw.to));
+      T(2, ridx, 3, sv(vw.hours));
+      T(2, ridx, 4, sv(vw.position));
+    });
+
+    // Training rows 14-35 (idx 13-34) — header at idx13
+    tr.slice(0,22).forEach((t, i) => {
+      const ridx = 14 + i;
+      T(2, ridx, 0, sv(t.title));
+      T(2, ridx, 1, fd(t.from)||sv(t.from));
+      T(2, ridx, 2, fd(t.to)||sv(t.to));
+      T(2, ridx, 3, sv(t.hours));
+      T(2, ridx, 4, sv(t.type));
+      T(2, ridx, 5, sv(t.conductedBy));
+    });
+
+    // Other Info rows 38-44 (idx 38-44) — one item per row per column
+    const oi = e.otherInfo || {};
+    const skills = (oi.skills||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+    const dists  = (oi.distinctions||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+    const membs  = (oi.memberships||'').split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+    const maxOI  = Math.max(skills.length, dists.length, membs.length, 1);
+    for (let i = 0; i < Math.min(maxOI, 7); i++) {
+      if (skills[i]) T(2, 38+i, 0, skills[i]);
+      if (dists[i])  T(2, 38+i, 1, dists[i]);
+      if (membs[i])  T(2, 38+i, 2, membs[i]);
+    }
+
+    // ── PAGE 4 / TABLE 3: Declarations + References + Gov't ID ──────────────
+    // Q40 details in blank cells rows 7-8 (idx 7-8)
+    if (q.q40aSpec) T(3, 7, 2, `Yes — ${sv(q.q40aSpec)}`);
+    if (q.q40bId)   T(3, 8, 2, `Yes — ${sv(q.q40bId)}`);
+    if (q.q40cId)   T(3, 8, 2, `Yes — ${sv(q.q40cId)}`);
+
+    // References rows 12-14 (idx 11-13)
+    refs.forEach((ref, i) => {
+      T(3, 11+i, 0, sv(ref.name));
+      T(3, 11+i, 1, sv(ref.address));
+      T(3, 11+i, 2, sv(ref.contact));
+    });
+
+    // Gov't ID rows 19-23 (idx 18-22)
+    T(3, 18, 2, sv(e.govtId));
+    T(3, 19, 2, sv(e.govtIdNo));
+    T(3, 21, 2, sv(e.govtIdIssuance));
+    T(3, 22, 4, sv(e.dateAccomplished));
+
+    // ── Rebuild XML ─────────────────────────────────────────────────────────
+    // Replace each original table XML block with rebuilt version
+    let newXml = xml;
+    // Process in reverse order so string positions don't shift
+    for (let i = tables.length-1; i >= 0; i--) {
+      const tbl = tables[i];
+      const rebuilt = rebuildTbl(tbl);
+      newXml = newXml.slice(0, tbl.start) + rebuilt + newXml.slice(tbl.end);
+    }
+
+    // Save back into the zip and download
+    zip.file('word/document.xml', newXml);
+    const outBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+
+    const url = URL.createObjectURL(outBlob);
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = `PDS_${sv(pr.surname).toUpperCase()}_${sv(pr.firstName).toUpperCase()}_CS212_2025.docx`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    toast('DOCX downloaded! Open in MS Word or LibreOffice. ✓', 'success');
+
+  } catch(err) {
+    console.error('DOCX fill error:', err);
+    toast('DOCX error: ' + err.message, 'error');
+  }
+}
 
     // 10. UMID → D27:F27
     setCell('C1', 'D27', pr.umid);
