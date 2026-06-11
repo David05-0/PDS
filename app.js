@@ -492,14 +492,14 @@ function buildPDSForm() {
     ${!isAdmin ? `<button class="btn btn-outline" onclick="saveDraft()" style="color:var(--accent);border-color:var(--accent)">💾 Save Draft</button>` : ''}
     <button class="btn btn-primary" onclick="${isAdmin ? 'adminSave()' : 'submitPDS()'}">${isAdmin ? 'Save Changes' : 'Submit to Admin'}</button>
   </div>`;
-  const _hasKey = !!(sessionStorage.getItem('pds_ai_key'));
+  const _hasAiKey = !!(sessionStorage.getItem('pds_ai_key'));
   const importBanner = `<div class="sim-import-banner">
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-size:20px">🤖</span>
       <div><div style="font-weight:700;font-size:13px;color:var(--navy)">AI Smart Import</div><div style="font-size:11px;color:var(--text-muted)">Upload a passport, ID, or existing PDS to auto-fill this form</div></div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      ${_hasKey ? `<button class="btn btn-outline" style="font-size:11px;padding:5px 10px;color:var(--green);border-color:var(--green)" onclick="sessionStorage.removeItem('pds_ai_key');buildPDSForm();toast('API key cleared.','success')">🔑 Key Set ✓ Clear</button>` : ''}
+      ${_hasAiKey ? `<button class="btn btn-outline" style="font-size:11px;padding:5px 10px;color:var(--green);border-color:var(--green)" onclick="sessionStorage.removeItem('pds_ai_key');buildPDSForm();toast('API key cleared.','success')">🔑 Key Set ✓ &nbsp;Clear</button>` : `<span style="font-size:11px;color:var(--amber);font-weight:500">🔑 API key required on first use</span>`}
       <button class="btn btn-primary" onclick="openSmartImport()">📄 Import from Document</button>
     </div>
   </div>`;
@@ -2235,13 +2235,23 @@ async function runSmartImport() {
   const mediaType = (simFileType && simFileType.startsWith('image/')) ? simFileType : 'image/jpeg';
 
   try {
-    // Get API key — prompt once per session, then cache in sessionStorage
+    // Retrieve or prompt for Anthropic API key (cached in sessionStorage for the tab session)
     let apiKey = sessionStorage.getItem('pds_ai_key') || '';
     if (!apiKey) {
-      apiKey = (prompt('Enter your Anthropic API key to use AI Smart Import.\n\nGet a free key at: console.anthropic.com\n(Stored in this browser tab only — never sent anywhere except Anthropic)') || '').trim();
-      if (!apiKey) { btn.textContent = '🔍 Extract & Fill'; btn.disabled = false; btn.style.opacity = '1'; statusEl.style.display = 'none'; return; }
-      if (!apiKey.startsWith('sk-ant-')) { throw new Error('That does not look like a valid Anthropic API key (should start with sk-ant-). Please try again.'); }
-      sessionStorage.setItem('pds_ai_key', apiKey);
+      const entered = (prompt(
+        'Enter your Anthropic API key to use AI Smart Import.\n\n' +
+        'Get one free at: console.anthropic.com\n' +
+        '(Stored in this browser tab only — clears when you close the tab)'
+      ) || '').trim();
+      if (!entered) {
+        btn.textContent = '🔍 Extract & Fill';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        statusEl.style.display = 'none';
+        return;
+      }
+      sessionStorage.setItem('pds_ai_key', entered);
+      apiKey = entered;
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2253,21 +2263,22 @@ async function runSmartImport() {
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-haiku-4-5',
         max_tokens: 1500,
         messages: [{
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mediaType, data: simFileData } },
-            { type: 'text', text: 'Extract all personal data from this Philippine government document or ID. Return ONLY valid JSON, no markdown, no explanation. Use "" for missing fields. Keys: {"surname":"","firstName":"","middleName":"","nameExt":"","dob":"","pob":"","sex":"","civil":"","height":"","weight":"","blood":"","citizenship":"","umid":"","pagibig":"","philhealth":"","philsys":"","tin":"","agencyNo":"","mobileNo":"","telNo":"","email":"","residHouseNo":"","residStreet":"","residSubdiv":"","residBrgy":"","residCity":"","residProv":"","residZip":"","permHouseNo":"","permStreet":"","permSubdiv":"","permBrgy":"","permCity":"","permProv":"","permZip":"","department":"","position":"","spouseSurname":"","spouseFirstName":"","spouseMiddleName":"","fatherSurname":"","fatherFirstName":"","fatherMiddleName":"","motherSurname":"","motherFirstName":"","motherMiddleName":"","govtId":"","govtIdNo":"","govtIdIssuance":""}. Use YYYY-MM-DD for dob. JSON only.' }
+            { type: 'text', text: 'Extract all personal data from this Philippine government document or ID. Return ONLY valid JSON — no markdown, no explanation, no extra text. Use empty string "" for any field not found. Required keys exactly: {"surname":"","firstName":"","middleName":"","nameExt":"","dob":"","pob":"","sex":"","civil":"","height":"","weight":"","blood":"","citizenship":"","umid":"","pagibig":"","philhealth":"","philsys":"","tin":"","agencyNo":"","mobileNo":"","telNo":"","email":"","residHouseNo":"","residStreet":"","residSubdiv":"","residBrgy":"","residCity":"","residProv":"","residZip":"","permHouseNo":"","permStreet":"","permSubdiv":"","permBrgy":"","permCity":"","permProv":"","permZip":"","department":"","position":"","spouseSurname":"","spouseFirstName":"","spouseMiddleName":"","fatherSurname":"","fatherFirstName":"","fatherMiddleName":"","motherSurname":"","motherFirstName":"","motherMiddleName":"","govtId":"","govtIdNo":"","govtIdIssuance":""}. Use YYYY-MM-DD for dob. JSON only.' }
           ]
         }]
       })
     });
 
+    // 401/403 = bad key — clear it so next click re-prompts
     if (response.status === 401 || response.status === 403) {
       sessionStorage.removeItem('pds_ai_key');
-      throw new Error('Invalid API key. Please try again with a valid key from console.anthropic.com');
+      throw new Error('Invalid API key — key has been cleared. Click Extract & Fill again to re-enter.');
     }
 
     const data = await response.json();
