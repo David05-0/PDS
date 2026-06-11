@@ -2077,8 +2077,8 @@ function openSmartImport() {
         </div>
         <input type="file" id="simFileInput" accept="image/*,.pdf" style="display:none" onchange="simHandleFile(this.files[0])">
         <div id="simPreviewWrap" style="display:none;margin-top:12px;text-align:center">
-          <img id="simPreview" style="max-height:200px;max-width:100%;border-radius:8px;border:1px solid var(--border)">
-          <div id="simFileName" style="font-size:11px;color:var(--text-muted);margin-top:6px"></div>
+          <img id="simPreview" style="max-height:220px;max-width:100%;border-radius:8px;border:1px solid var(--border);display:block;margin:0 auto">
+          <div id="simFileName" style="font-size:11px;color:var(--text-muted);margin-top:8px"></div>
         </div>
         <div id="simStatus" style="display:none"></div>
         <div id="simResults" style="display:none"></div>
@@ -2106,6 +2106,8 @@ function simHandleDrop(e) {
   if (file) simHandleFile(file);
 }
 
+let _simPdfDoc = null; // holds loaded PDF for page switching
+
 async function simHandleFile(file) {
   if (!file) return;
   if (file.size > 15 * 1024 * 1024) { alert('File is too large. Please use an image under 15MB.'); return; }
@@ -2115,19 +2117,16 @@ async function simHandleFile(file) {
   const previewImg = document.getElementById('simPreview');
   const fileNameEl = document.getElementById('simFileName');
 
-  // Reset state
-  simFileData = null; simFileType = null;
+  simFileData = null; simFileType = null; _simPdfDoc = null;
   const btn = document.getElementById('simExtractBtn');
   btn.disabled = true; btn.style.opacity = '.5';
   document.getElementById('simResults').style.display = 'none';
 
   if (file.type === 'application/pdf') {
-    // Render PDF first page to canvas using PDF.js, then convert to PNG
     statusEl.style.display = 'block';
     statusEl.className = 'sim-status-loading';
-    statusEl.innerHTML = '<span class="sim-spinner"></span> Rendering PDF first page…';
+    statusEl.innerHTML = '<span class="sim-spinner"></span> Loading PDF…';
     try {
-      // Dynamically load PDF.js if not already loaded
       if (!window.pdfjsLib) {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script');
@@ -2135,41 +2134,86 @@ async function simHandleFile(file) {
           s.onload = resolve; s.onerror = reject;
           document.head.appendChild(s);
         });
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       }
       const arrayBuf = await file.arrayBuffer();
-      const pdfDoc = await window.pdfjsLib.getDocument({ data: arrayBuf }).promise;
-      const page = await pdfDoc.getPage(1);
-      const viewport = page.getViewport({ scale: 2.0 }); // 2x for quality
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width; canvas.height = viewport.height;
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      simFileData = dataUrl.split(',')[1];
-      simFileType = 'image/jpeg';
-      previewImg.src = dataUrl; previewImg.style.display = '';
-      previewWrap.style.display = 'block';
-      fileNameEl.textContent = file.name + ' — Page 1 rendered (' + (file.size/1024).toFixed(0) + ' KB)';
+      _simPdfDoc = await window.pdfjsLib.getDocument({ data: arrayBuf }).promise;
+      const totalPages = _simPdfDoc.numPages;
       statusEl.style.display = 'none';
-      btn.disabled = false; btn.style.opacity = '1';
+
+      // Build page-picker UI
+      previewWrap.style.display = 'block';
+      previewImg.style.display = '';
+      fileNameEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:6px">
+          <span style="font-weight:600;color:var(--text)">${esc(file.name)}</span>
+          <span style="color:var(--text-muted)">(${totalPages} page${totalPages>1?'s':''})</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;justify-content:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--text-muted)">Select page with your data:</span>
+          ${Array.from({length:totalPages},(_,i)=>`<button class="btn btn-sm btn-outline" id="simPgBtn${i+1}" onclick="simRenderPage(${i+1},${totalPages})">${i+1}</button>`).join('')}
+        </div>`;
+
+      // Auto-render page 1 to start
+      await simRenderPage(1, totalPages);
     } catch(err) {
+      statusEl.style.display = 'block';
       statusEl.className = 'sim-status-err';
-      statusEl.innerHTML = '⚠ Could not render PDF: ' + err.message + '. Try saving as JPG/PNG instead.';
+      statusEl.innerHTML = '⚠ Could not load PDF: ' + esc(err.message) + '. Try exporting as JPG or PNG instead.';
     }
   } else {
-    // Image file
     simFileType = file.type || 'image/jpeg';
     const reader = new FileReader();
     reader.onload = (ev) => {
       simFileData = ev.target.result.split(',')[1];
       previewImg.src = ev.target.result; previewImg.style.display = '';
       previewWrap.style.display = 'block';
-      fileNameEl.textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+      fileNameEl.innerHTML = `<span style="color:var(--text-muted)">${esc(file.name)} (${(file.size/1024).toFixed(1)} KB)</span>`;
       btn.disabled = false; btn.style.opacity = '1';
-      statusEl.style.display = 'none';
+      document.getElementById('simStatus').style.display = 'none';
       document.getElementById('simResults').style.display = 'none';
     };
     reader.readAsDataURL(file);
+  }
+}
+
+async function simRenderPage(pageNum, totalPages) {
+  if (!_simPdfDoc) return;
+  const previewImg = document.getElementById('simPreview');
+  const btn = document.getElementById('simExtractBtn');
+  const statusEl = document.getElementById('simStatus');
+
+  // Highlight active page button
+  for (let i = 1; i <= totalPages; i++) {
+    const pb = document.getElementById('simPgBtn' + i);
+    if (pb) { pb.className = i === pageNum ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline'; }
+  }
+
+  statusEl.style.display = 'block';
+  statusEl.className = 'sim-status-loading';
+  statusEl.innerHTML = `<span class="sim-spinner"></span> Rendering page ${pageNum} of ${totalPages}…`;
+  btn.disabled = true; btn.style.opacity = '.5';
+  document.getElementById('simResults').style.display = 'none';
+
+  try {
+    const page = await _simPdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 2.2 }); // high resolution
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width; canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.93);
+    simFileData = dataUrl.split(',')[1];
+    simFileType = 'image/jpeg';
+    previewImg.src = dataUrl;
+    statusEl.style.display = 'none';
+    btn.disabled = false; btn.style.opacity = '1';
+  } catch(err) {
+    statusEl.className = 'sim-status-err';
+    statusEl.innerHTML = '⚠ Could not render page ' + pageNum + ': ' + esc(err.message);
   }
 }
 
