@@ -492,7 +492,14 @@ function buildPDSForm() {
     ${!isAdmin ? `<button class="btn btn-outline" onclick="saveDraft()" style="color:var(--accent);border-color:var(--accent)">💾 Save Draft</button>` : ''}
     <button class="btn btn-primary" onclick="${isAdmin ? 'adminSave()' : 'submitPDS()'}">${isAdmin ? 'Save Changes' : 'Submit to Admin'}</button>
   </div>`;
-  document.getElementById('pdsFormWrap').innerHTML = `<div class="tab-bar">${tabBar}</div><div class="form-body">${body}</div>${footer}`;
+  const importBanner = `<div class="sim-import-banner">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">🤖</span>
+      <div><div style="font-weight:700;font-size:13px;color:var(--navy)">AI Smart Import</div><div style="font-size:11px;color:var(--text-muted)">Upload a passport, ID, or existing PDS to auto-fill this form</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="openSmartImport()">📄 Import from Document</button>
+  </div>`;
+  document.getElementById('pdsFormWrap').innerHTML = importBanner + `<div class="tab-bar">${tabBar}</div><div class="form-body">${body}</div>${footer}`;
 }
 
 function swTab(i) { collectForm(); activeTab = i; buildPDSForm(); }
@@ -2039,6 +2046,290 @@ async function fillDocxPDS(id) {
     console.error('DOCX fill error:', err);
     toast('DOCX error: ' + err.message, 'error');
   }
+}
+
+// ══════════ AI SMART IMPORT ══════════
+function openSmartImport() {
+  // Remove existing modal if any
+  const existing = document.getElementById('smartImportModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'smartImportModal';
+  modal.innerHTML = `
+    <div class="sim-backdrop" onclick="closeSmartImport()"></div>
+    <div class="sim-box">
+      <div class="sim-hdr">
+        <div>
+          <div class="sim-title">🤖 AI Smart Import</div>
+          <div class="sim-sub">Upload a document image — the AI will auto-fill your PDS form</div>
+        </div>
+        <button class="sim-close" onclick="closeSmartImport()">✕</button>
+      </div>
+      <div class="sim-body">
+        <div class="sim-tip">
+          <b>📌 Accepts:</b> Passport, Driver's License, Old PDS, Birth Certificate, UMID, PhilSys ID, DFA form, or any government ID image
+        </div>
+        <div class="sim-drop" id="simDrop" onclick="document.getElementById('simFileInput').click()" ondragover="event.preventDefault();this.classList.add('sim-drop-hover')" ondragleave="this.classList.remove('sim-drop-hover')" ondrop="simHandleDrop(event)">
+          <div class="sim-drop-icon">📄</div>
+          <div class="sim-drop-text">Click to upload or drag & drop</div>
+          <div class="sim-drop-sub">Supports JPG, PNG, PDF (first page) · Max 10MB</div>
+        </div>
+        <input type="file" id="simFileInput" accept="image/*,.pdf" style="display:none" onchange="simHandleFile(this.files[0])">
+        <div id="simPreviewWrap" style="display:none;margin-top:12px;text-align:center">
+          <img id="simPreview" style="max-height:200px;max-width:100%;border-radius:8px;border:1px solid var(--border)">
+          <div id="simFileName" style="font-size:11px;color:var(--text-muted);margin-top:6px"></div>
+        </div>
+        <div id="simStatus" style="display:none"></div>
+        <div id="simResults" style="display:none"></div>
+      </div>
+      <div class="sim-footer">
+        <button class="btn btn-outline" onclick="closeSmartImport()">Cancel</button>
+        <button class="btn btn-primary" id="simExtractBtn" onclick="runSmartImport()" disabled style="opacity:.5">🔍 Extract &amp; Fill</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function closeSmartImport() {
+  const m = document.getElementById('smartImportModal');
+  if (m) m.remove();
+}
+
+let simFileData = null; // base64 data
+let simFileType = null;
+
+function simHandleDrop(e) {
+  e.preventDefault();
+  document.getElementById('simDrop').classList.remove('sim-drop-hover');
+  const file = e.dataTransfer.files[0];
+  if (file) simHandleFile(file);
+}
+
+function simHandleFile(file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { alert('File is too large. Please use an image under 10MB.'); return; }
+  simFileType = file.type;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    simFileData = ev.target.result.split(',')[1]; // base64 only
+    // Show preview
+    if (file.type.startsWith('image/')) {
+      document.getElementById('simPreview').src = ev.target.result;
+      document.getElementById('simPreviewWrap').style.display = 'block';
+    } else {
+      document.getElementById('simPreview').src = '';
+      document.getElementById('simPreviewWrap').style.display = 'block';
+      document.getElementById('simPreview').style.display = 'none';
+    }
+    document.getElementById('simFileName').textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+    const btn = document.getElementById('simExtractBtn');
+    btn.disabled = false; btn.style.opacity = '1';
+    document.getElementById('simStatus').style.display = 'none';
+    document.getElementById('simResults').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function runSmartImport() {
+  if (!simFileData) return;
+  const btn = document.getElementById('simExtractBtn');
+  const statusEl = document.getElementById('simStatus');
+  const resultsEl = document.getElementById('simResults');
+  btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '⏳ Extracting…';
+  statusEl.style.display = 'block';
+  statusEl.className = 'sim-status-loading';
+  statusEl.innerHTML = '<span class="sim-spinner"></span> AI is reading your document… this may take a few seconds.';
+  resultsEl.style.display = 'none';
+
+  const mediaType = simFileType && simFileType.startsWith('image/') ? simFileType : 'image/jpeg';
+
+  const prompt = `You are a Philippine government PDS (Personal Data Sheet CS Form 212) data extractor.
+Analyze the provided document image carefully. Extract all visible personal information.
+
+Return ONLY a valid JSON object (no markdown, no extra text) with these exact keys (leave empty string "" if not found):
+{
+  "surname": "",
+  "firstName": "",
+  "middleName": "",
+  "nameExt": "",
+  "dob": "YYYY-MM-DD",
+  "pob": "",
+  "sex": "Male or Female",
+  "civil": "Single or Married or Widow/er or Separated",
+  "height": "",
+  "weight": "",
+  "blood": "",
+  "citizenship": "Filipino",
+  "umid": "",
+  "pagibig": "",
+  "philhealth": "",
+  "philsys": "",
+  "tin": "",
+  "agencyNo": "",
+  "residHouseNo": "",
+  "residStreet": "",
+  "residSubdiv": "",
+  "residBrgy": "",
+  "residCity": "",
+  "residProv": "",
+  "residZip": "",
+  "permHouseNo": "",
+  "permStreet": "",
+  "permSubdiv": "",
+  "permBrgy": "",
+  "permCity": "",
+  "permProv": "",
+  "permZip": "",
+  "telNo": "",
+  "mobileNo": "",
+  "email": "",
+  "department": "",
+  "position": "",
+  "spouseSurname": "",
+  "spouseFirstName": "",
+  "spouseMiddleName": "",
+  "fatherSurname": "",
+  "fatherFirstName": "",
+  "fatherMiddleName": "",
+  "motherSurname": "",
+  "motherFirstName": "",
+  "motherMiddleName": "",
+  "govtId": "",
+  "govtIdNo": "",
+  "govtIdIssuance": ""
+}
+
+Important notes:
+- For DFA Passport Application Form: Last Name = surname, First Name = firstName, Middle Name = middleName, Place of Birth = pob, Date of Birth in dd/mm/yyyy → convert to YYYY-MM-DD
+- For Philippine IDs: extract all visible fields
+- Address: parse into house/street/barangay/city/province components
+- Return ONLY the JSON. No explanation.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType, data: simFileData }
+            },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(()=>({error:{message:'Unknown error'}}));
+      throw new Error(err.error?.message || 'API request failed');
+    }
+
+    const data = await response.json();
+    const text = data.content.map(i => i.text || '').join('').trim();
+    // Strip markdown fences if any
+    const clean = text.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/,'').trim();
+    let extracted;
+    try { extracted = JSON.parse(clean); } catch(e) { throw new Error('Could not parse AI response. Please try a clearer image.'); }
+
+    // Count filled fields
+    const filled = Object.values(extracted).filter(v => v && v.toString().trim() !== '').length;
+    if (filled === 0) throw new Error('No data could be extracted. Please upload a clearer image of your document.');
+
+    // Show results preview
+    const fieldLabels = {
+      surname:'Surname', firstName:'First Name', middleName:'Middle Name', nameExt:'Extension',
+      dob:'Date of Birth', pob:'Place of Birth', sex:'Sex', civil:'Civil Status',
+      height:'Height', weight:'Weight', blood:'Blood Type', citizenship:'Citizenship',
+      umid:'UMID', pagibig:'Pag-IBIG', philhealth:'PhilHealth', philsys:'PhilSys',
+      tin:'TIN', agencyNo:'Agency No.', mobileNo:'Mobile No.', telNo:'Tel No.', email:'Email',
+      residCity:'City (Resid.)', residProv:'Province (Resid.)', residBrgy:'Barangay (Resid.)',
+      residStreet:'Street (Resid.)', residHouseNo:'House No. (Resid.)', residZip:'ZIP (Resid.)',
+      permCity:'City (Perm.)', permProv:'Province (Perm.)', department:'Department', position:'Position',
+      spouseSurname:"Spouse's Surname", spouseFirstName:"Spouse's First Name",
+      fatherSurname:"Father's Surname", fatherFirstName:"Father's First Name",
+      motherSurname:"Mother's Surname", motherFirstName:"Mother's First Name",
+      govtId:'Govt. ID', govtIdNo:'ID No.', govtIdIssuance:'Date/Place Issued'
+    };
+
+    const rows = Object.entries(extracted).filter(([k,v]) => v && v.trim()).map(([k,v]) =>
+      `<tr><td style="color:var(--text-muted);font-size:11px;padding:5px 8px;font-weight:600;text-transform:uppercase;letter-spacing:.3px">${fieldLabels[k]||k}</td><td style="font-weight:600;font-size:12px;padding:5px 8px">${esc(v)}</td></tr>`
+    ).join('');
+
+    resultsEl.style.display = 'block';
+    resultsEl.innerHTML = `
+      <div class="sim-results-hdr">✅ Extracted <b>${filled}</b> fields from your document</div>
+      <div class="sim-results-table-wrap"><table class="sim-results-table"><tbody>${rows}</tbody></table></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:12px;font-size:13px" onclick="applySmartImport(${JSON.stringify(JSON.stringify(extracted)).replace(/</g,'&lt;')})">✅ Apply to PDS Form</button>
+    `;
+    statusEl.className = 'sim-status-ok';
+    statusEl.innerHTML = '✓ Extraction complete — review fields below then click Apply.';
+    btn.textContent = '🔍 Extract & Fill'; btn.disabled = false; btn.style.opacity = '1';
+
+    // store for apply
+    window._simExtracted = extracted;
+
+  } catch(err) {
+    statusEl.className = 'sim-status-err';
+    statusEl.innerHTML = '⚠ ' + (err.message || 'Extraction failed. Please try again.');
+    btn.textContent = '🔍 Extract & Fill'; btn.disabled = false; btn.style.opacity = '1';
+  }
+}
+
+function applySmartImport(jsonStr) {
+  let d;
+  try { d = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr; } catch { d = window._simExtracted; }
+  if (!d && window._simExtracted) d = window._simExtracted;
+  if (!d) return;
+
+  const p = editingPDS;
+  const pr = p.personal;
+  const fam = p.family;
+
+  // Apply personal fields
+  const personalMap = {
+    surname:'surname', firstName:'firstName', middleName:'middleName', nameExt:'nameExt',
+    dob:'dob', pob:'pob', sex:'sex', civil:'civil',
+    height:'height', weight:'weight', blood:'blood', citizenship:'citizenship',
+    umid:'umid', pagibig:'pagibig', philhealth:'philhealth', philsys:'philsys',
+    tin:'tin', agencyNo:'agencyNo',
+    residHouseNo:'residHouseNo', residStreet:'residStreet', residSubdiv:'residSubdiv',
+    residBrgy:'residBrgy', residCity:'residCity', residProv:'residProv', residZip:'residZip',
+    permHouseNo:'permHouseNo', permStreet:'permStreet', permSubdiv:'permSubdiv',
+    permBrgy:'permBrgy', permCity:'permCity', permProv:'permProv', permZip:'permZip',
+    telNo:'telNo', mobileNo:'mobileNo', email:'email'
+  };
+  Object.entries(personalMap).forEach(([src, dst]) => { if (d[src] && d[src].trim()) pr[dst] = d[src].trim(); });
+
+  if (d.department && d.department.trim()) p.department = d.department.trim();
+  if (d.position && d.position.trim()) p.position = d.position.trim();
+
+  // Family
+  if (d.spouseSurname) fam.spouseSurname = d.spouseSurname.trim();
+  if (d.spouseFirstName) fam.spouseFirstName = d.spouseFirstName.trim();
+  if (d.spouseMiddleName) fam.spouseMiddleName = d.spouseMiddleName.trim();
+  if (d.fatherSurname) fam.fatherSurname = d.fatherSurname.trim();
+  if (d.fatherFirstName) fam.fatherFirstName = d.fatherFirstName.trim();
+  if (d.fatherMiddleName) fam.fatherMiddleName = d.fatherMiddleName.trim();
+  if (d.motherSurname) fam.motherSurname = d.motherSurname.trim();
+  if (d.motherFirstName) fam.motherFirstName = d.motherFirstName.trim();
+  if (d.motherMiddleName) fam.motherMiddleName = d.motherMiddleName.trim();
+
+  // Govt ID
+  if (d.govtId) p.govtId = d.govtId.trim();
+  if (d.govtIdNo) p.govtIdNo = d.govtIdNo.trim();
+  if (d.govtIdIssuance) p.govtIdIssuance = d.govtIdIssuance.trim();
+
+  closeSmartImport();
+  activeTab = 0;
+  buildPDSForm();
+  toast('✅ AI data applied to form! Please review and complete remaining fields.', 'success');
 }
 
 // ══════════ POPULATE SELECTS ══════════
