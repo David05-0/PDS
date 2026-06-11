@@ -3,14 +3,15 @@
 // Set ANTHROPIC_API_KEY in your Vercel project environment variables
 
 export default async function handler(req, res) {
-  // Only allow POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY environment variable is not set. Please add it in your Vercel project settings.' });
+    return res.status(500).json({
+      error: 'ANTHROPIC_API_KEY is not set. Go to Vercel → Settings → Environment Variables and add your key from console.anthropic.com, then redeploy.'
+    });
   }
 
   const { imageData, mediaType } = req.body;
@@ -18,23 +19,20 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing imageData or mediaType' });
   }
 
-  const prompt = `You are a Philippine government PDS (Personal Data Sheet CS Form 212) data extractor.
-Analyze the provided document image carefully. Extract all visible personal information.
-
-Return ONLY a valid JSON object (no markdown, no extra text) with these exact keys (leave empty string "" if not found):
-{
+  // The JSON template we want filled — used both in prompt and as prefill
+  const JSON_TEMPLATE = `{
   "surname": "",
   "firstName": "",
   "middleName": "",
   "nameExt": "",
-  "dob": "YYYY-MM-DD",
+  "dob": "",
   "pob": "",
-  "sex": "Male or Female",
-  "civil": "Single or Married or Widow/er or Separated",
+  "sex": "",
+  "civil": "",
   "height": "",
   "weight": "",
   "blood": "",
-  "citizenship": "Filipino",
+  "citizenship": "",
   "umid": "",
   "pagibig": "",
   "philhealth": "",
@@ -72,15 +70,20 @@ Return ONLY a valid JSON object (no markdown, no extra text) with these exact ke
   "govtId": "",
   "govtIdNo": "",
   "govtIdIssuance": ""
-}
+}`;
 
-Important notes:
-- For DFA Passport Application Form: LAST NAME/APELYIDO = surname, FIRST NAME/PANGALAN = firstName, MIDDLE NAME/GITNANG PANGALAN = middleName, PLACE OF BIRTH/POOK NG KAPANGANAKAN = pob, DATE OF BIRTH in dd MONTH YYYY or dd/mm/yyyy -> convert to YYYY-MM-DD format
-- For Philippine IDs: extract all visible fields
-- For address fields: parse into components (house number, street, subdivision, barangay, city/municipality, province)
-- SEX: output exactly "Male" or "Female"
-- Civil Status: output exactly "Single", "Married", "Widow/er", or "Separated"
-- Return ONLY the JSON object. Absolutely no other text, no explanation, no markdown.`;
+  const userPrompt = `You are a data extraction engine for Philippine government PDS forms and IDs.
+Look at the document image and extract every visible personal data field.
+
+Rules:
+- dob format: YYYY-MM-DD (convert from any format you see, e.g. "10 FEBRUARY 2003" → "2003-02-10", "23-Jun-2026" → "2026-06-23")
+- sex: exactly "Male" or "Female"
+- civil: exactly "Single", "Married", "Widow/er", or "Separated"
+- citizenship: "Filipino" unless another is visible
+- For DFA forms: LAST NAME/APELYIDO=surname, FIRST NAME/PANGALAN=firstName, MIDDLE NAME/GITNANG PANGALAN=middleName, PLACE OF BIRTH/POOK NG KAPANGANAKAN=pob
+- For addresses: split into house/lot number, street, subdivision, barangay, city, province components
+- Leave field as empty string "" if not visible in the document
+- Output ONLY valid JSON, nothing else — no explanation, no markdown fences`;
 
   try {
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -92,40 +95,84 @@ Important notes:
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1200,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: imageData }
-            },
-            { type: 'text', text: prompt }
-          ]
-        }]
+        max_tokens: 1500,
+        // Prefill forces the model to continue from "{" — guarantees JSON output
+        system: 'You are a JSON-only data extraction engine. You output only valid JSON objects, never any other text.',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: mediaType, data: imageData }
+              },
+              {
+                type: 'text',
+                text: userPrompt + '\n\nFill in this exact JSON template with data from the image:\n' + JSON_TEMPLATE
+              }
+            ]
+          },
+          // Assistant prefill — model MUST continue from here, guaranteeing JSON
+          {
+            role: 'assistant',
+            content: '{'
+          }
+        ]
       })
     });
 
     if (!anthropicRes.ok) {
       const errData = await anthropicRes.json().catch(() => ({}));
       return res.status(anthropicRes.status).json({
-        error: errData.error?.message || 'Anthropic API error'
+        error: errData.error?.message || `Anthropic API error (HTTP ${anthropicRes.status})`
       });
     }
 
     const data = await anthropicRes.json();
-    const text = (data.content || []).map(b => b.text || '').join('').trim();
-    // Strip markdown code fences if model adds them
-    const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/, '').trim();
+    const rawText = (data.content || []).map(b => b.text || '').join('').trim();
+
+    // The prefill was "{", so prepend it back and parse
+    let jsonStr = '{' + rawText;
+
+    // Also strip any accidental markdown fences
+    jsonStr = jsonStr.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```[\s\S]*$/, '').trim();
+
+    // If it still doesn't start with {, try to extract the first {...} block
+    if (!jsonStr.startsWith('{')) {
+      const match = jsonStr.match(/\{[\s\S]*\}/);
+      if (match) jsonStr = match[0];
+    }
 
     let extracted;
     try {
-      extracted = JSON.parse(clean);
-    } catch {
-      return res.status(422).json({ error: 'Could not parse AI response. Try a clearer image.', raw: clean });
+      extracted = JSON.parse(jsonStr);
+    } catch (parseErr) {
+      // Last resort: try to extract JSON substring
+      const match = jsonStr.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          extracted = JSON.parse(match[0]);
+        } catch {
+          return res.status(422).json({
+            error: 'The AI could not produce valid JSON from this document. Try a higher-quality image or a different page.',
+            raw: rawText.slice(0, 300)
+          });
+        }
+      } else {
+        return res.status(422).json({
+          error: 'The AI could not produce valid JSON from this document. Try a higher-quality image or a different page.',
+          raw: rawText.slice(0, 300)
+        });
+      }
     }
 
-    return res.status(200).json({ extracted });
+    // Sanitize: ensure all values are strings
+    const sanitized = {};
+    for (const [k, v] of Object.entries(extracted)) {
+      sanitized[k] = v == null ? '' : String(v).trim();
+    }
+
+    return res.status(200).json({ extracted: sanitized });
 
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Server error' });
