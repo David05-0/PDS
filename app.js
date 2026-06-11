@@ -2106,29 +2106,71 @@ function simHandleDrop(e) {
   if (file) simHandleFile(file);
 }
 
-function simHandleFile(file) {
+async function simHandleFile(file) {
   if (!file) return;
-  if (file.size > 10 * 1024 * 1024) { alert('File is too large. Please use an image under 10MB.'); return; }
-  simFileType = file.type;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    simFileData = ev.target.result.split(',')[1]; // base64 only
-    // Show preview
-    if (file.type.startsWith('image/')) {
-      document.getElementById('simPreview').src = ev.target.result;
-      document.getElementById('simPreviewWrap').style.display = 'block';
-    } else {
-      document.getElementById('simPreview').src = '';
-      document.getElementById('simPreviewWrap').style.display = 'block';
-      document.getElementById('simPreview').style.display = 'none';
+  if (file.size > 15 * 1024 * 1024) { alert('File is too large. Please use an image under 15MB.'); return; }
+
+  const statusEl = document.getElementById('simStatus');
+  const previewWrap = document.getElementById('simPreviewWrap');
+  const previewImg = document.getElementById('simPreview');
+  const fileNameEl = document.getElementById('simFileName');
+
+  // Reset state
+  simFileData = null; simFileType = null;
+  const btn = document.getElementById('simExtractBtn');
+  btn.disabled = true; btn.style.opacity = '.5';
+  document.getElementById('simResults').style.display = 'none';
+
+  if (file.type === 'application/pdf') {
+    // Render PDF first page to canvas using PDF.js, then convert to PNG
+    statusEl.style.display = 'block';
+    statusEl.className = 'sim-status-loading';
+    statusEl.innerHTML = '<span class="sim-spinner"></span> Rendering PDF first page…';
+    try {
+      // Dynamically load PDF.js if not already loaded
+      if (!window.pdfjsLib) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+      const arrayBuf = await file.arrayBuffer();
+      const pdfDoc = await window.pdfjsLib.getDocument({ data: arrayBuf }).promise;
+      const page = await pdfDoc.getPage(1);
+      const viewport = page.getViewport({ scale: 2.0 }); // 2x for quality
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width; canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      simFileData = dataUrl.split(',')[1];
+      simFileType = 'image/jpeg';
+      previewImg.src = dataUrl; previewImg.style.display = '';
+      previewWrap.style.display = 'block';
+      fileNameEl.textContent = file.name + ' — Page 1 rendered (' + (file.size/1024).toFixed(0) + ' KB)';
+      statusEl.style.display = 'none';
+      btn.disabled = false; btn.style.opacity = '1';
+    } catch(err) {
+      statusEl.className = 'sim-status-err';
+      statusEl.innerHTML = '⚠ Could not render PDF: ' + err.message + '. Try saving as JPG/PNG instead.';
     }
-    document.getElementById('simFileName').textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
-    const btn = document.getElementById('simExtractBtn');
-    btn.disabled = false; btn.style.opacity = '1';
-    document.getElementById('simStatus').style.display = 'none';
-    document.getElementById('simResults').style.display = 'none';
-  };
-  reader.readAsDataURL(file);
+  } else {
+    // Image file
+    simFileType = file.type || 'image/jpeg';
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      simFileData = ev.target.result.split(',')[1];
+      previewImg.src = ev.target.result; previewImg.style.display = '';
+      previewWrap.style.display = 'block';
+      fileNameEl.textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+      btn.disabled = false; btn.style.opacity = '1';
+      statusEl.style.display = 'none';
+      document.getElementById('simResults').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
 }
 
 async function runSmartImport() {
@@ -2142,157 +2184,89 @@ async function runSmartImport() {
   statusEl.innerHTML = '<span class="sim-spinner"></span> AI is reading your document… this may take a few seconds.';
   resultsEl.style.display = 'none';
 
-  const mediaType = simFileType && simFileType.startsWith('image/') ? simFileType : 'image/jpeg';
-
-  const prompt = `You are a Philippine government PDS (Personal Data Sheet CS Form 212) data extractor.
-Analyze the provided document image carefully. Extract all visible personal information.
-
-Return ONLY a valid JSON object (no markdown, no extra text) with these exact keys (leave empty string "" if not found):
-{
-  "surname": "",
-  "firstName": "",
-  "middleName": "",
-  "nameExt": "",
-  "dob": "YYYY-MM-DD",
-  "pob": "",
-  "sex": "Male or Female",
-  "civil": "Single or Married or Widow/er or Separated",
-  "height": "",
-  "weight": "",
-  "blood": "",
-  "citizenship": "Filipino",
-  "umid": "",
-  "pagibig": "",
-  "philhealth": "",
-  "philsys": "",
-  "tin": "",
-  "agencyNo": "",
-  "residHouseNo": "",
-  "residStreet": "",
-  "residSubdiv": "",
-  "residBrgy": "",
-  "residCity": "",
-  "residProv": "",
-  "residZip": "",
-  "permHouseNo": "",
-  "permStreet": "",
-  "permSubdiv": "",
-  "permBrgy": "",
-  "permCity": "",
-  "permProv": "",
-  "permZip": "",
-  "telNo": "",
-  "mobileNo": "",
-  "email": "",
-  "department": "",
-  "position": "",
-  "spouseSurname": "",
-  "spouseFirstName": "",
-  "spouseMiddleName": "",
-  "fatherSurname": "",
-  "fatherFirstName": "",
-  "fatherMiddleName": "",
-  "motherSurname": "",
-  "motherFirstName": "",
-  "motherMiddleName": "",
-  "govtId": "",
-  "govtIdNo": "",
-  "govtIdIssuance": ""
-}
-
-Important notes:
-- For DFA Passport Application Form: Last Name = surname, First Name = firstName, Middle Name = middleName, Place of Birth = pob, Date of Birth in dd/mm/yyyy → convert to YYYY-MM-DD
-- For Philippine IDs: extract all visible fields
-- Address: parse into house/street/barangay/city/province components
-- Return ONLY the JSON. No explanation.`;
+  const mediaType = (simFileType && simFileType.startsWith('image/')) ? simFileType : 'image/jpeg';
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    // Use the Vercel serverless proxy at /api/extract to avoid CORS
+    const response = await fetch('/api/extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: simFileData }
-            },
-            { type: 'text', text: prompt }
-          ]
-        }]
-      })
+      body: JSON.stringify({ imageData: simFileData, mediaType })
     });
 
+    const result = await response.json();
+
     if (!response.ok) {
-      const err = await response.json().catch(()=>({error:{message:'Unknown error'}}));
-      throw new Error(err.error?.message || 'API request failed');
+      // Friendly error for missing API key
+      if (result.error && result.error.includes('ANTHROPIC_API_KEY')) {
+        throw new Error('API key not configured. Go to your Vercel project → Settings → Environment Variables → add ANTHROPIC_API_KEY with your key from console.anthropic.com');
+      }
+      throw new Error(result.error || 'Extraction failed (HTTP ' + response.status + ')');
     }
 
-    const data = await response.json();
-    const text = data.content.map(i => i.text || '').join('').trim();
-    // Strip markdown fences if any
-    const clean = text.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/,'').trim();
-    let extracted;
-    try { extracted = JSON.parse(clean); } catch(e) { throw new Error('Could not parse AI response. Please try a clearer image.'); }
+    const extracted = result.extracted;
+    if (!extracted) throw new Error('No data returned from AI.');
 
     // Count filled fields
     const filled = Object.values(extracted).filter(v => v && v.toString().trim() !== '').length;
     if (filled === 0) throw new Error('No data could be extracted. Please upload a clearer image of your document.');
 
-    // Show results preview
+    window._simExtracted = extracted;
+
+    // Build preview table
     const fieldLabels = {
       surname:'Surname', firstName:'First Name', middleName:'Middle Name', nameExt:'Extension',
       dob:'Date of Birth', pob:'Place of Birth', sex:'Sex', civil:'Civil Status',
-      height:'Height', weight:'Weight', blood:'Blood Type', citizenship:'Citizenship',
-      umid:'UMID', pagibig:'Pag-IBIG', philhealth:'PhilHealth', philsys:'PhilSys',
-      tin:'TIN', agencyNo:'Agency No.', mobileNo:'Mobile No.', telNo:'Tel No.', email:'Email',
-      residCity:'City (Resid.)', residProv:'Province (Resid.)', residBrgy:'Barangay (Resid.)',
-      residStreet:'Street (Resid.)', residHouseNo:'House No. (Resid.)', residZip:'ZIP (Resid.)',
-      permCity:'City (Perm.)', permProv:'Province (Perm.)', department:'Department', position:'Position',
-      spouseSurname:"Spouse's Surname", spouseFirstName:"Spouse's First Name",
-      fatherSurname:"Father's Surname", fatherFirstName:"Father's First Name",
-      motherSurname:"Mother's Surname", motherFirstName:"Mother's First Name",
-      govtId:'Govt. ID', govtIdNo:'ID No.', govtIdIssuance:'Date/Place Issued'
+      height:'Height (m)', weight:'Weight (kg)', blood:'Blood Type', citizenship:'Citizenship',
+      umid:'UMID', pagibig:'Pag-IBIG', philhealth:'PhilHealth', philsys:'PhilSys (PSN)',
+      tin:'TIN', agencyNo:'Agency Employee No.',
+      mobileNo:'Mobile No.', telNo:'Tel No.', email:'Email',
+      residHouseNo:'House/Lot No.', residStreet:'Street', residSubdiv:'Subdiv./Village',
+      residBrgy:'Barangay', residCity:'City/Municipality', residProv:'Province', residZip:'ZIP',
+      permHouseNo:'Perm. House/Lot No.', permStreet:'Perm. Street',
+      permBrgy:'Perm. Barangay', permCity:'Perm. City', permProv:'Perm. Province', permZip:'Perm. ZIP',
+      department:'Department', position:'Position',
+      spouseSurname:"Spouse Surname", spouseFirstName:"Spouse First Name", spouseMiddleName:"Spouse Middle Name",
+      fatherSurname:"Father's Surname", fatherFirstName:"Father's First Name", fatherMiddleName:"Father's Middle Name",
+      motherSurname:"Mother's Surname", motherFirstName:"Mother's First Name", motherMiddleName:"Mother's Middle Name",
+      govtId:'Govt. Issued ID', govtIdNo:'ID/Passport No.', govtIdIssuance:'Date/Place of Issuance'
     };
 
-    const rows = Object.entries(extracted).filter(([k,v]) => v && v.trim()).map(([k,v]) =>
-      `<tr><td style="color:var(--text-muted);font-size:11px;padding:5px 8px;font-weight:600;text-transform:uppercase;letter-spacing:.3px">${fieldLabels[k]||k}</td><td style="font-weight:600;font-size:12px;padding:5px 8px">${esc(v)}</td></tr>`
-    ).join('');
+    const rows = Object.entries(extracted)
+      .filter(([,v]) => v && String(v).trim())
+      .map(([k,v]) => `<tr>
+        <td style="color:var(--text-muted);font-size:10.5px;padding:5px 10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">${fieldLabels[k]||k}</td>
+        <td style="font-weight:600;font-size:12.5px;padding:5px 10px;color:var(--navy)">${esc(String(v))}</td>
+      </tr>`).join('');
 
     resultsEl.style.display = 'block';
     resultsEl.innerHTML = `
-      <div class="sim-results-hdr">✅ Extracted <b>${filled}</b> fields from your document</div>
-      <div class="sim-results-table-wrap"><table class="sim-results-table"><tbody>${rows}</tbody></table></div>
-      <button class="btn btn-primary" style="width:100%;margin-top:12px;font-size:13px" onclick="applySmartImport(${JSON.stringify(JSON.stringify(extracted)).replace(/</g,'&lt;')})">✅ Apply to PDS Form</button>
+      <div class="sim-results-hdr">✅ Extracted <b>${filled}</b> fields from your document — review below:</div>
+      <div class="sim-results-table-wrap">
+        <table class="sim-results-table"><tbody>${rows}</tbody></table>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:12px;font-size:13px;padding:10px" onclick="applySmartImport()">✅ Apply All Fields to PDS Form</button>
     `;
     statusEl.className = 'sim-status-ok';
-    statusEl.innerHTML = '✓ Extraction complete — review fields below then click Apply.';
+    statusEl.innerHTML = '✓ Extraction complete — review the fields above, then click Apply.';
     btn.textContent = '🔍 Extract & Fill'; btn.disabled = false; btn.style.opacity = '1';
-
-    // store for apply
-    window._simExtracted = extracted;
 
   } catch(err) {
     statusEl.className = 'sim-status-err';
-    statusEl.innerHTML = '⚠ ' + (err.message || 'Extraction failed. Please try again.');
+    statusEl.innerHTML = `<b>⚠ Error:</b> ${esc(err.message || 'Extraction failed. Please try again.')}`;
     btn.textContent = '🔍 Extract & Fill'; btn.disabled = false; btn.style.opacity = '1';
   }
 }
 
-function applySmartImport(jsonStr) {
-  let d;
-  try { d = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr; } catch { d = window._simExtracted; }
-  if (!d && window._simExtracted) d = window._simExtracted;
-  if (!d) return;
+function applySmartImport() {
+  const d = window._simExtracted;
+  if (!d) { toast('No extracted data found. Please run extraction first.', 'error'); return; }
 
   const p = editingPDS;
   const pr = p.personal;
   const fam = p.family;
 
-  // Apply personal fields
+  // Personal fields mapping: extractedKey → personal object key
   const personalMap = {
     surname:'surname', firstName:'firstName', middleName:'middleName', nameExt:'nameExt',
     dob:'dob', pob:'pob', sex:'sex', civil:'civil',
@@ -2305,31 +2279,35 @@ function applySmartImport(jsonStr) {
     permBrgy:'permBrgy', permCity:'permCity', permProv:'permProv', permZip:'permZip',
     telNo:'telNo', mobileNo:'mobileNo', email:'email'
   };
-  Object.entries(personalMap).forEach(([src, dst]) => { if (d[src] && d[src].trim()) pr[dst] = d[src].trim(); });
 
-  if (d.department && d.department.trim()) p.department = d.department.trim();
-  if (d.position && d.position.trim()) p.position = d.position.trim();
+  let applied = 0;
+  Object.entries(personalMap).forEach(([src, dst]) => {
+    if (d[src] && String(d[src]).trim()) { pr[dst] = String(d[src]).trim(); applied++; }
+  });
+
+  if (d.department && String(d.department).trim()) { p.department = String(d.department).trim(); applied++; }
+  if (d.position && String(d.position).trim()) { p.position = String(d.position).trim(); applied++; }
 
   // Family
-  if (d.spouseSurname) fam.spouseSurname = d.spouseSurname.trim();
-  if (d.spouseFirstName) fam.spouseFirstName = d.spouseFirstName.trim();
-  if (d.spouseMiddleName) fam.spouseMiddleName = d.spouseMiddleName.trim();
-  if (d.fatherSurname) fam.fatherSurname = d.fatherSurname.trim();
-  if (d.fatherFirstName) fam.fatherFirstName = d.fatherFirstName.trim();
-  if (d.fatherMiddleName) fam.fatherMiddleName = d.fatherMiddleName.trim();
-  if (d.motherSurname) fam.motherSurname = d.motherSurname.trim();
-  if (d.motherFirstName) fam.motherFirstName = d.motherFirstName.trim();
-  if (d.motherMiddleName) fam.motherMiddleName = d.motherMiddleName.trim();
+  const famMap = {
+    spouseSurname:'spouseSurname', spouseFirstName:'spouseFirstName', spouseMiddleName:'spouseMiddleName',
+    fatherSurname:'fatherSurname', fatherFirstName:'fatherFirstName', fatherMiddleName:'fatherMiddleName',
+    motherSurname:'motherSurname', motherFirstName:'motherFirstName', motherMiddleName:'motherMiddleName'
+  };
+  Object.entries(famMap).forEach(([src, dst]) => {
+    if (d[src] && String(d[src]).trim()) { fam[dst] = String(d[src]).trim(); applied++; }
+  });
 
   // Govt ID
-  if (d.govtId) p.govtId = d.govtId.trim();
-  if (d.govtIdNo) p.govtIdNo = d.govtIdNo.trim();
-  if (d.govtIdIssuance) p.govtIdIssuance = d.govtIdIssuance.trim();
+  if (d.govtId) { p.govtId = String(d.govtId).trim(); applied++; }
+  if (d.govtIdNo) { p.govtIdNo = String(d.govtIdNo).trim(); applied++; }
+  if (d.govtIdIssuance) { p.govtIdIssuance = String(d.govtIdIssuance).trim(); applied++; }
 
+  window._simExtracted = null;
   closeSmartImport();
   activeTab = 0;
   buildPDSForm();
-  toast('✅ AI data applied to form! Please review and complete remaining fields.', 'success');
+  toast(`✅ ${applied} fields imported from document! Please review and complete any missing info.`, 'success');
 }
 
 // ══════════ POPULATE SELECTS ══════════
