@@ -1689,9 +1689,20 @@ async function fillDocxPDS(id) {
     if (!JSZip) throw new Error('JSZip failed to load.');
 
     // ── Fetch template ────────────────────────────────────────────────────────
-    const res = await fetch('pds_template.docx');
-    if (!res.ok) throw new Error('Could not load pds_template.docx. Make sure it is deployed alongside the app.');
-    const zip = await JSZip.loadAsync(await res.arrayBuffer());
+    if (location.protocol === 'file:') {
+      throw new Error('DOCX download requires the app to be served over HTTP. Deploy to Vercel, or run a local server (e.g. "npx serve ." in the project folder).');
+    }
+    let docxBytes;
+    try {
+      const res = await fetch('pds_template.docx');
+      if (!res.ok) throw new Error(`pds_template.docx not found on server (HTTP ${res.status}). Make sure it is deployed alongside the app.`);
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('text/html')) throw new Error('Server returned an HTML page instead of the .docx file. Check that pds_template.docx is deployed and listed in vercel.json.');
+      docxBytes = await res.arrayBuffer();
+    } catch (fetchErr) {
+      throw new Error('Could not fetch pds_template.docx: ' + fetchErr.message);
+    }
+    const zip = await JSZip.loadAsync(docxBytes);
     let xml = await zip.file('word/document.xml').async('string');
 
     // ── Helpers ───────────────────────────────────────────────────────────────
