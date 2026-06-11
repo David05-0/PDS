@@ -492,12 +492,16 @@ function buildPDSForm() {
     ${!isAdmin ? `<button class="btn btn-outline" onclick="saveDraft()" style="color:var(--accent);border-color:var(--accent)">💾 Save Draft</button>` : ''}
     <button class="btn btn-primary" onclick="${isAdmin ? 'adminSave()' : 'submitPDS()'}">${isAdmin ? 'Save Changes' : 'Submit to Admin'}</button>
   </div>`;
+  const apiKeySet = !!window._anthropicKey;
   const importBanner = `<div class="sim-import-banner">
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-size:20px">🤖</span>
       <div><div style="font-weight:700;font-size:13px;color:var(--navy)">AI Smart Import</div><div style="font-size:11px;color:var(--text-muted)">Upload a passport, ID, or existing PDS to auto-fill this form</div></div>
     </div>
-    <button class="btn btn-primary" onclick="openSmartImport()">📄 Import from Document</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-outline" onclick="setApiKey()" title="${apiKeySet ? 'API key is set — click to change' : 'Set Anthropic API key'}" style="${apiKeySet ? 'color:var(--green);border-color:var(--green)' : 'color:var(--amber);border-color:var(--amber)'}">🔑 ${apiKeySet ? 'Key Set ✓' : 'Set API Key'}</button>
+      <button class="btn btn-primary" onclick="openSmartImport()">📄 Import from Document</button>
+    </div>
   </div>`;
   document.getElementById('pdsFormWrap').innerHTML = importBanner + `<div class="tab-bar">${tabBar}</div><div class="form-body">${body}</div>${footer}`;
 }
@@ -1689,20 +1693,9 @@ async function fillDocxPDS(id) {
     if (!JSZip) throw new Error('JSZip failed to load.');
 
     // ── Fetch template ────────────────────────────────────────────────────────
-    if (location.protocol === 'file:') {
-      throw new Error('DOCX download requires the app to be served over HTTP. Deploy to Vercel, or run a local server (e.g. "npx serve ." in the project folder).');
-    }
-    let docxBytes;
-    try {
-      const res = await fetch('pds_template.docx');
-      if (!res.ok) throw new Error(`pds_template.docx not found on server (HTTP ${res.status}). Make sure it is deployed alongside the app.`);
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('text/html')) throw new Error('Server returned an HTML page instead of the .docx file. Check that pds_template.docx is deployed and listed in vercel.json.');
-      docxBytes = await res.arrayBuffer();
-    } catch (fetchErr) {
-      throw new Error('Could not fetch pds_template.docx: ' + fetchErr.message);
-    }
-    const zip = await JSZip.loadAsync(docxBytes);
+    const res = await fetch('pds_template.docx');
+    if (!res.ok) throw new Error('Could not load pds_template.docx. Make sure it is deployed alongside the app.');
+    const zip = await JSZip.loadAsync(await res.arrayBuffer());
     let xml = await zip.file('word/document.xml').async('string');
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -2059,6 +2052,19 @@ async function fillDocxPDS(id) {
   }
 }
 
+// ══════════ API KEY MANAGEMENT ══════════
+function setApiKey() {
+  const current = window._anthropicKey ? '(key already set — enter new to replace)' : '';
+  const key = prompt(`Enter your Anthropic API key ${current}\n\nGet one at: console.anthropic.com\nStored in memory only — never saved to disk or localStorage.`);
+  if (key === null) return; // cancelled
+  const trimmed = key.trim();
+  if (!trimmed) { toast('API key cleared.', 'success'); window._anthropicKey = ''; }
+  else if (!trimmed.startsWith('sk-ant-')) { toast('⚠ That does not look like a valid Anthropic API key (should start with sk-ant-). Key not saved.', 'error'); return; }
+  else { window._anthropicKey = trimmed; toast('✅ API key saved for this session.', 'success'); }
+  // Re-render form to update the key button label
+  if (typeof buildPDSForm === 'function') buildPDSForm();
+}
+
 // ══════════ AI SMART IMPORT ══════════
 function openSmartImport() {
   // Remove existing modal if any
@@ -2242,24 +2248,52 @@ async function runSmartImport() {
   const mediaType = (simFileType && simFileType.startsWith('image/')) ? simFileType : 'image/jpeg';
 
   try {
-    // Use the Vercel serverless proxy at /api/extract to avoid CORS
-    const response = await fetch('/api/extract', {
+    // Call Anthropic API directly from the browser
+    if (!window._anthropicKey) {
+      throw new Error('Anthropic API key not set. Click the 🔑 button in the PDS form toolbar to enter your key.');
+    }
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageData: simFileData, mediaType })
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': window._anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 1500,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: simFileData } },
+            { type: 'text', text: 'Extract all personal data from this Philippine government document or ID. Return ONLY a valid JSON object (no markdown, no explanation) with these exact keys (use empty string "" if not found):\n{"surname":"","firstName":"","middleName":"","nameExt":"","dob":"","pob":"","sex":"","civil":"","height":"","weight":"","blood":"","citizenship":"","umid":"","pagibig":"","philhealth":"","philsys":"","tin":"","agencyNo":"","mobileNo":"","telNo":"","email":"","residHouseNo":"","residStreet":"","residSubdiv":"","residBrgy":"","residCity":"","residProv":"","residZip":"","permHouseNo":"","permStreet":"","permSubdiv":"","permBrgy":"","permCity":"","permProv":"","permZip":"","department":"","position":"","spouseSurname":"","spouseFirstName":"","spouseMiddleName":"","fatherSurname":"","fatherFirstName":"","fatherMiddleName":"","motherSurname":"","motherFirstName":"","motherMiddleName":"","govtId":"","govtIdNo":"","govtIdIssuance":""}\nFor dob use YYYY-MM-DD format. Return JSON only, no markdown.' }
+          ]
+        }]
+      })
     });
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      // Friendly error for missing API key
-      if (result.error && result.error.includes('ANTHROPIC_API_KEY')) {
-        throw new Error('API key not configured. Go to your Vercel project → Settings → Environment Variables → add ANTHROPIC_API_KEY with your key from console.anthropic.com');
-      }
-      throw new Error(result.error || 'Extraction failed (HTTP ' + response.status + ')');
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Invalid or missing Anthropic API key. Click the 🔑 button in the form toolbar to update your key.');
+    }
+    const ct = response.headers.get('content-type') || '';
+    if (ct.includes('text/html')) {
+      throw new Error('Unexpected response from API. Check your network connection and try again.');
     }
 
-    const extracted = result.extracted;
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error?.message || 'Extraction failed (HTTP ' + response.status + ')');
+    }
+
+    const rawText = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    let extracted;
+    try {
+      const clean = rawText.replace(/```json|```/g, '').trim();
+      extracted = JSON.parse(clean);
+    } catch {
+      throw new Error('AI returned unreadable data. Please try a clearer image.');
+    }
     if (!extracted) throw new Error('No data returned from AI.');
 
     // Count filled fields
