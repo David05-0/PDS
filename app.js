@@ -492,14 +492,14 @@ function buildPDSForm() {
     ${!isAdmin ? `<button class="btn btn-outline" onclick="saveDraft()" style="color:var(--accent);border-color:var(--accent)">💾 Save Draft</button>` : ''}
     <button class="btn btn-primary" onclick="${isAdmin ? 'adminSave()' : 'submitPDS()'}">${isAdmin ? 'Save Changes' : 'Submit to Admin'}</button>
   </div>`;
-  const apiKeySet = !!window._anthropicKey;
+  const _hasKey = !!(sessionStorage.getItem('pds_ai_key'));
   const importBanner = `<div class="sim-import-banner">
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-size:20px">🤖</span>
       <div><div style="font-weight:700;font-size:13px;color:var(--navy)">AI Smart Import</div><div style="font-size:11px;color:var(--text-muted)">Upload a passport, ID, or existing PDS to auto-fill this form</div></div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-outline" onclick="setApiKey()" title="${apiKeySet ? 'API key is set — click to change' : 'Set Anthropic API key'}" style="${apiKeySet ? 'color:var(--green);border-color:var(--green)' : 'color:var(--amber);border-color:var(--amber)'}">🔑 ${apiKeySet ? 'Key Set ✓' : 'Set API Key'}</button>
+      ${_hasKey ? `<button class="btn btn-outline" style="font-size:11px;padding:5px 10px;color:var(--green);border-color:var(--green)" onclick="sessionStorage.removeItem('pds_ai_key');buildPDSForm();toast('API key cleared.','success')">🔑 Key Set ✓ Clear</button>` : ''}
       <button class="btn btn-primary" onclick="openSmartImport()">📄 Import from Document</button>
     </div>
   </div>`;
@@ -2052,19 +2052,6 @@ async function fillDocxPDS(id) {
   }
 }
 
-// ══════════ API KEY MANAGEMENT ══════════
-function setApiKey() {
-  const current = window._anthropicKey ? '(key already set — enter new to replace)' : '';
-  const key = prompt(`Enter your Anthropic API key ${current}\n\nGet one at: console.anthropic.com\nStored in memory only — never saved to disk or localStorage.`);
-  if (key === null) return; // cancelled
-  const trimmed = key.trim();
-  if (!trimmed) { toast('API key cleared.', 'success'); window._anthropicKey = ''; }
-  else if (!trimmed.startsWith('sk-ant-')) { toast('⚠ That does not look like a valid Anthropic API key (should start with sk-ant-). Key not saved.', 'error'); return; }
-  else { window._anthropicKey = trimmed; toast('✅ API key saved for this session.', 'success'); }
-  // Re-render form to update the key button label
-  if (typeof buildPDSForm === 'function') buildPDSForm();
-}
-
 // ══════════ AI SMART IMPORT ══════════
 function openSmartImport() {
   // Remove existing modal if any
@@ -2248,37 +2235,39 @@ async function runSmartImport() {
   const mediaType = (simFileType && simFileType.startsWith('image/')) ? simFileType : 'image/jpeg';
 
   try {
-    // Call Anthropic API directly from the browser
-    if (!window._anthropicKey) {
-      throw new Error('Anthropic API key not set. Click the 🔑 button in the PDS form toolbar to enter your key.');
+    // Get API key — prompt once per session, then cache in sessionStorage
+    let apiKey = sessionStorage.getItem('pds_ai_key') || '';
+    if (!apiKey) {
+      apiKey = (prompt('Enter your Anthropic API key to use AI Smart Import.\n\nGet a free key at: console.anthropic.com\n(Stored in this browser tab only — never sent anywhere except Anthropic)') || '').trim();
+      if (!apiKey) { btn.textContent = '🔍 Extract & Fill'; btn.disabled = false; btn.style.opacity = '1'; statusEl.style.display = 'none'; return; }
+      if (!apiKey.startsWith('sk-ant-')) { throw new Error('That does not look like a valid Anthropic API key (should start with sk-ant-). Please try again.'); }
+      sessionStorage.setItem('pds_ai_key', apiKey);
     }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': window._anthropicKey,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1500,
         messages: [{
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: mediaType, data: simFileData } },
-            { type: 'text', text: 'Extract all personal data from this Philippine government document or ID. Return ONLY a valid JSON object (no markdown, no explanation) with these exact keys (use empty string "" if not found):\n{"surname":"","firstName":"","middleName":"","nameExt":"","dob":"","pob":"","sex":"","civil":"","height":"","weight":"","blood":"","citizenship":"","umid":"","pagibig":"","philhealth":"","philsys":"","tin":"","agencyNo":"","mobileNo":"","telNo":"","email":"","residHouseNo":"","residStreet":"","residSubdiv":"","residBrgy":"","residCity":"","residProv":"","residZip":"","permHouseNo":"","permStreet":"","permSubdiv":"","permBrgy":"","permCity":"","permProv":"","permZip":"","department":"","position":"","spouseSurname":"","spouseFirstName":"","spouseMiddleName":"","fatherSurname":"","fatherFirstName":"","fatherMiddleName":"","motherSurname":"","motherFirstName":"","motherMiddleName":"","govtId":"","govtIdNo":"","govtIdIssuance":""}\nFor dob use YYYY-MM-DD format. Return JSON only, no markdown.' }
+            { type: 'text', text: 'Extract all personal data from this Philippine government document or ID. Return ONLY valid JSON, no markdown, no explanation. Use "" for missing fields. Keys: {"surname":"","firstName":"","middleName":"","nameExt":"","dob":"","pob":"","sex":"","civil":"","height":"","weight":"","blood":"","citizenship":"","umid":"","pagibig":"","philhealth":"","philsys":"","tin":"","agencyNo":"","mobileNo":"","telNo":"","email":"","residHouseNo":"","residStreet":"","residSubdiv":"","residBrgy":"","residCity":"","residProv":"","residZip":"","permHouseNo":"","permStreet":"","permSubdiv":"","permBrgy":"","permCity":"","permProv":"","permZip":"","department":"","position":"","spouseSurname":"","spouseFirstName":"","spouseMiddleName":"","fatherSurname":"","fatherFirstName":"","fatherMiddleName":"","motherSurname":"","motherFirstName":"","motherMiddleName":"","govtId":"","govtIdNo":"","govtIdIssuance":""}. Use YYYY-MM-DD for dob. JSON only.' }
           ]
         }]
       })
     });
 
     if (response.status === 401 || response.status === 403) {
-      throw new Error('Invalid or missing Anthropic API key. Click the 🔑 button in the form toolbar to update your key.');
-    }
-    const ct = response.headers.get('content-type') || '';
-    if (ct.includes('text/html')) {
-      throw new Error('Unexpected response from API. Check your network connection and try again.');
+      sessionStorage.removeItem('pds_ai_key');
+      throw new Error('Invalid API key. Please try again with a valid key from console.anthropic.com');
     }
 
     const data = await response.json();
@@ -2289,8 +2278,7 @@ async function runSmartImport() {
     const rawText = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     let extracted;
     try {
-      const clean = rawText.replace(/```json|```/g, '').trim();
-      extracted = JSON.parse(clean);
+      extracted = JSON.parse(rawText.replace(/```json|```/g, '').trim());
     } catch {
       throw new Error('AI returned unreadable data. Please try a clearer image.');
     }
